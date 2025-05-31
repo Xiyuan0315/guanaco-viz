@@ -1,0 +1,28 @@
+# Python artifacts
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.so
+
+# Packaging
+*.egg-info/
+build/
+dist/
+
+# OS metadata
+.DS_Store
+
+# Virtual environments
+.venv/
+
+# Editor & workspace
+.idea/
+.vscode/
+.history/
+
+# pixi environments
+.pixi
+*.egg-info
+
+pixi*

@@ -1,0 +1,296 @@
+/* Scientific Style CSS */
+
+/* General container styling */
+.content-container {
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+    margin: 20px;
+}
+
+/* Section title styling */
+.section-title {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: #343a40;
+    text-align: center;
+}
+
+/* Section description styling */
+.section-description {
+    font-size: 1.1em;
+    color: #6c757d;
+    text-align: center;
+    margin-bottom: 20px;
+    line-height: 1.6;
+}
+
+/* Summary container styling */
+.summary-container {
+    background-color: #ffffff;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Summary title */
+.summary-title {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #007bff;
+    margin-bottom: 10px;
+}
+
+/* Summary item styling */
+.summary-item {
+    font-size: 1.1em;
+    color: #495057;
+    margin: 5px 0;
+    line-height: 1.5;
+}
+
+/* Custom icons for better presentation */
+.summary-item::before {
+    margin-right: 5px;
+}
+
+/* Remove borders and shadows from draggable grid items */
+.grid-layout-no-border .react-grid-item {
+    border: none !important;
+    box-shadow: none !important;
+    background-color: transparent !important;
+}
+
+.grid-layout-no-border .react-grid-item:hover {
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Remove resize handle borders */
+.grid-layout-no-border .react-resizable-handle {
+    border: none !important;
+    background: none !important;
+}
+
+/* Style sliders to match LUX theme */
+.dbc-slider .rc-slider-track {
+    background-color: #1a1a1a !important;
+}
+
+.dbc-slider .rc-slider-handle {
+    border-color: #1a1a1a !important;
+    background-color: #fff !important;
+}
+
+.dbc-slider .rc-slider-handle:hover {
+    border-color: #000000 !important;
+}
+
+.dbc-slider .rc-slider-handle:focus {
+    border-color: #000000 !important;
+    box-shadow: 0 0 0 0.2rem rgba(26, 26, 26, 0.25) !important;
+}
+
+/* Style Dash Core Component dropdowns to match LUX theme */
+.Select-control {
+    border-color: #4e5d6c !important;
+    border-radius: 0.25rem !important;
+    background-color: #fff !important;
+}
+
+.Select-control:hover {
+    border-color: #1a1a1a !important;
+}
+
+.Select.is-focused > .Select-control {
+    border-color: #1a1a1a !important;
+    box-shadow: 0 0 0 0.2rem rgba(26, 26, 26, 0.25) !important;
+}
+
+.Select-placeholder {
+    color: #868e96 !important;
+}
+
+/* Style multi-select tags to match LUX theme */
+.Select--multi .Select-value {
+    background-color: #f7f7f9 !important;
+    border: 1px solid #4e5d6c !important;
+    color: #1a1a1a !important;
+    border-radius: 3px !important;
+}
+
+.Select--multi .Select-value-icon {
+    border-right: 1px solid #4e5d6c !important;
+}
+
+.Select--multi .Select-value-icon:hover {
+    background-color: #e9ecef !important;
+    color: #1a1a1a !important;
+}
+
+.Select--multi .Select-value-label {
+    color: #1a1a1a !important;
+}
+
+/* Style dropdown menu options to match LUX theme */
+.Select-menu-outer {
+    border: 1px solid #4e5d6c !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+}
+
+.Select-option {
+    background-color: #fff !important;
+    color: #1a1a1a !important;
+}
+
+.Select-option:hover {
+    background-color: #f7f7f9 !important;
+    color: #1a1a1a !important;
+}
+
+.Select-option.is-selected {
+    background-color: #e9ecef !important;
+    color: #1a1a1a !important;
+}
+
+.Select-option.is-focused {
+    background-color: #f7f7f9 !important;
+    color: #1a1a1a !important;
+}
+
+.Select-option.is-disabled {
+    color: #868e96 !important;
+}
+
+/* Style loading spinner to match LUX theme */
+._dash-loading {
+    color: #1a1a1a !important;
+}
+
+._dash-loading-callback::after {
+    color: #1a1a1a !important;
+    border-color: #e9ecef !important;
+    border-top-color: #1a1a1a !important;
+}
+
+/* Style Dash loading states */
+.dash-spinner.dash-default-spinner,
+.dash-spinner.dash-sk-circle .sk-circle:before {
+    border-color: #e9ecef #e9ecef #e9ecef #1a1a1a !important;
+}
+
+/* Circle spinner dots */
+.dash-spinner.dash-sk-circle .sk-child:before {
+    background-color: #1a1a1a !important;
+}
+
+/* Default spinner animation */
+@keyframes sk-circleBounceDelay {
+    0%, 80%, 100% {
+        transform: scale(0);
+        background-color: #1a1a1a !important;
+    }
+    40% {
+        transform: scale(1);
+        background-color: #1a1a1a !important;
+    }
+}
+
+/* Rotating spinner */
+.dash-spinner.dash-rotate-loader {
+    border: 2px solid #e9ecef !important;
+    border-top-color: #1a1a1a !important;
+}
+
+/* Graph loading spinner */
+.dash-graph--pending .dash-graph-placeholder {
+    border-color: #e9ecef !important;
+}
+
+.dash-graph--pending .dash-spinner {
+    border-color: #e9ecef !important;
+    border-top-color: #1a1a1a !important;
+}
+
+/* Force override inline styles for circle spinner */
+.sk-circle .sk-child::before {
+    background-color: #1a1a1a !important;
+}
+
+.sk-circle .sk-circle1::before,
+.sk-circle .sk-circle2::before,
+.sk-circle .sk-circle3::before,
+.sk-circle .sk-circle4::before,
+.sk-circle .sk-circle5::before,
+.sk-circle .sk-circle6::before,
+.sk-circle .sk-circle7::before,
+.sk-circle .sk-circle8::before,
+.sk-circle .sk-circle9::before,
+.sk-circle .sk-circle10::before,
+.sk-circle .sk-circle11::before,
+.sk-circle .sk-circle12::before {
+    background-color: #1a1a1a !important;
+}
+
+/* Style tabs to match LUX theme */
+.tab {
+    border-color: #4e5d6c !important;
+    color: #868e96 !important;
+    background-color: #f7f7f9 !important;
+}
+
+.tab--selected {
+    border-color: #4e5d6c #4e5d6c #fff !important;
+    color: #1a1a1a !important;
+    background-color: #fff !important;
+    font-weight: 500 !important;
+}
+
+.tab:hover {
+    color: #1a1a1a !important;
+}
+
+/* Fix navbar height to match logo */
+.custom-navbar {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    height: 60px !important;
+}
+
+.custom-navbar .navbar-nav {
+    height: 60px !important;
+}
+
+.custom-navbar .container {
+    height: 60px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+/* Fix dataset tabs text color */
+.dataset-tabs .nav-link {
+    color: #1a1a1a !important;
+}
+
+.dataset-tabs .nav-link.active {
+    color: #1a1a1a !important;
+    font-weight: 500 !important;
+}
+
+.dataset-tabs .nav-link:hover {
+    color: #000000 !important;
+}
+
+/* Align tabs to bottom of navbar */
+.tabs-align-bottom {
+    height: 60px !important;
+    display: flex !important;
+    align-items: flex-end !important;
+}
+
+.tabs-align-bottom .nav-tabs {
+    border-bottom: none !important;
+    margin-bottom: 0 !important;
+}
