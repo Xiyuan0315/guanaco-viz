@@ -4,10 +4,21 @@ GUANACO: Interactive visualization tool for single-cell data and genome browser
 
 ## Installation
 
+
+### 1. Clone the repository
 ```bash
-git clone https://github.com/Xiyuan0315/guanaco-viz.git
-cd guanaco-viz
+git clone https://github.com/Systems-Immunometabolism-Lab/GUANACO_updated
+cd GUANACO_updated
+```
+
+### 2. Install from local directory
+```bash
 pip install .
+```
+
+Or for development (editable install):
+```bash
+pip install -e .
 ```
 
 ## Usage
