@@ -5,13 +5,15 @@ GUANACO: Interactive visualization tool for single-cell data and genome browser
 ## Installation
 
 ```bash
-pip install guanaco-viz
+git clone https://github.com/Xiyuan0315/guanaco-viz.git
+cd guanaco-viz
+pip install .
 ```
 
 ## Usage
 
 ```bash
-guanaco -c config.json
+guanaco -c config.json -d data_folder
 ```
 
 ### Command-line Options
