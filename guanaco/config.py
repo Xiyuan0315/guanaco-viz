@@ -15,5 +15,6 @@ scatter_config = {
         'scale': 1
     },
     'displaylogo': False,
-    'modeBarButtonsToRemove': ['select', 'lasso2d']
+    'modeBarButtonsToRemove': [],
+    'modeBarButtonsToAdd': ['select2d', 'lasso2d']
 }

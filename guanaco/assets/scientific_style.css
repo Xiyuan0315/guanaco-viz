@@ -294,3 +294,28 @@
     border-bottom: none !important;
     margin-bottom: 0 !important;
 }
+
+/* Disable loading spinner for all scatter plots */
+[id$="-annotation-scatter"].dash-graph--pending,
+[id$="-gene-scatter"].dash-graph--pending {
+    opacity: 1 !important;
+}
+
+[id$="-annotation-scatter"].dash-graph--pending .dash-spinner,
+[id$="-gene-scatter"].dash-graph--pending .dash-spinner,
+[id$="-annotation-scatter"].dash-graph--pending .dash-graph-placeholder,
+[id$="-gene-scatter"].dash-graph--pending .dash-graph-placeholder {
+    display: none !important;
+}
+
+/* Keep graph visible during updates */
+[id$="-annotation-scatter"] .js-plotly-plot,
+[id$="-gene-scatter"] .js-plotly-plot {
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+/* Prevent layout shift during graph updates */
+[id$="-annotation-scatter"] {
+    min-height: 450px !important;
+}

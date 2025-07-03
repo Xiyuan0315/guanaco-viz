@@ -1,9 +1,11 @@
-from dash import dcc, html, Output, Input, MATCH
+from dash import dcc, html, Output, Input, MATCH, State
 from guanaco.app import app
-from guanaco.layout import navbar, tab_content, footprint, guanaco_footer, description_layout, anndata_layout, igv_layout
+from guanaco.layout import (
+    navbar, tab_content, footprint, guanaco_footer, description_layout,
+    anndata_layout, igv_layout, resize_tip_toast  # make sure this is imported
+)
 from guanaco.pages.browser.gene_browser import gene_browser_callbacks
-from guanaco.pages.single_cell.mod01_scatter import scatter_callback
-from guanaco.pages.single_cell.mod02_other_plots import maker_vis_callback
+from guanaco.pages.single_cell.single_cell_plots import single_cell_callbacks
 from guanaco.data_loader import initialize_data
 import muon as mu
 import anndata as ad
@@ -19,13 +21,23 @@ def get_discrete_labels(adata: ad.AnnData, *, max_unique: int = 50) -> list[str]
     return nunique[nunique < max_unique].sort_values().index.tolist()
 
 # App layout
+# app.layout = html.Div([
+#     dcc.Location(id='url', refresh=False),
+#     navbar(datasets),
+#     html.Div(id="tabs-content", style={"paddingTop": "70px"}),
+#     footprint,
+#     guanaco_footer
+# ])
 app.layout = html.Div([
-    dcc.Location(id='url', refresh=False),
+    dcc.Location(id="url", refresh=False),
+    dcc.Store(id="tip-store", storage_type="session", data={"shown": False}),
     navbar(datasets),
+    resize_tip_toast(),  # 👈 add this line
     html.Div(id="tabs-content", style={"paddingTop": "70px"}),
     footprint,
-    guanaco_footer
+    guanaco_footer,
 ])
+
 
 # Register callbacks for scatter and other plots for each dataset
 for name, dataset in datasets.items():
@@ -35,12 +47,10 @@ for name, dataset in datasets.items():
             for mod in dataset.adata.mod.keys():
                 mod_adata = dataset.adata.mod[mod]
                 prefix = f"{name}-{mod}"
-                scatter_callback(app, mod_adata, prefix)
-                maker_vis_callback(app, mod_adata, prefix)
+                single_cell_callbacks(app, mod_adata, prefix)
         else:
             prefix = name
-            scatter_callback(app, dataset.adata, prefix)
-            maker_vis_callback(app, dataset.adata, prefix)
+            single_cell_callbacks(app, dataset.adata, prefix)
 
     # Register genome browser callbacks if genome tracks exist
     if dataset.genome_tracks is not None and dataset.ref_track is not None:
@@ -81,6 +91,27 @@ def update_anndata_layout(selected_modality, active_tab):
     label_list = get_discrete_labels(adata)
     prefix = f"{active_tab}-{selected_modality}" if isinstance(dataset.adata, mu.MuData) else active_tab
     return anndata_layout(adata, dataset.gene_markers or [], label_list, prefix)
+
+@app.callback(
+    [Output("tip-modal", "is_open"), Output("tip-store", "data")],
+    [Input("url", "pathname"), Input("close-tip", "n_clicks")],
+    [State("tip-modal", "is_open"), State("tip-store", "data")],
+)
+def toggle_tip(pathname, n_clicks, is_open, store):
+    if store is None:
+        store = {"shown": False}
+    
+    # 如果用户点击了 "Got it" 按钮
+    if n_clicks:
+        return False, {"shown": True}
+    
+    # 如果还没展示过这个提示
+    if not store.get("shown", False):
+        return True, {"shown": True}
+
+    # 否则就不显示
+    return False, store
+
 
 # Update IGV layout when dataset changes
 @app.callback(

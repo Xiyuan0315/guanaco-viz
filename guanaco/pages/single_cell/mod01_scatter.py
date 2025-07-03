@@ -1,6 +1,6 @@
 import json
 import os
-from dash import dcc, html, Input, Output, exceptions
+from dash import dcc, html, Input, Output, exceptions, State
 import dash_bootstrap_components as dbc
 import plotly.express as px
 from guanaco.pages.single_cell.cellplotly.embedding import plot_categorical_embedding, plot_continuous_embedding
@@ -235,9 +235,13 @@ def scatter_layout(adata,prefix):
     anno_list = unique_counts_sorted.index.tolist()
 
     clustering_dropdown, coordinates_dropdowns = create_control_components(adata)
-    layout = dbc.Row([
-        # Left column: Controls
-        dbc.Col(
+    layout = html.Div([
+        # Add Store component to hold selected cells data
+        dcc.Store(id=f'{prefix}-selected-cells-store'),
+        
+        dbc.Row([
+            # Left column: Controls
+            dbc.Col(
             html.Div(
                 [
                     html.Div(
@@ -283,6 +287,17 @@ def scatter_layout(adata,prefix):
                     children=dcc.Graph(id=f'{prefix}-annotation-scatter', config=scatter_config),
                     style={"height": "100%"},
                 ),
+                # Add button below the scatter plot
+                html.Div([
+                    dbc.Button(
+                        "Update Other Plots with Selected Cells",
+                        id=f"{prefix}-update-plots-button",
+                        color="primary",
+                        n_clicks=0,
+                        style={'width': '100%', 'marginTop': '10px'}
+                    ),
+                    html.Div(id=f"{prefix}-selection-status", style={'textAlign': 'center', 'marginTop': '5px'})
+                ]),
             ],
             className="dbc",
             style={'marginBottom': '20px'}
@@ -292,7 +307,7 @@ def scatter_layout(adata,prefix):
     dbc.Col(
         html.Div(
             [
-                html.Label("Select Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                html.Label("Search Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
                 generate_scatter_gene_selection(init_gene_list=adata.var_names.to_list()[:10]),
                 dcc.Loading(
                     id=f"{prefix}-loading-gene-scatter",
@@ -306,8 +321,8 @@ def scatter_layout(adata,prefix):
         ),
         xs=12, sm=12, md=4, lg=4, xl=5  # Full width on small screens, half on larger screens
     ),
-    ]
-    )
+        ])
+    ])
 
     return layout
 
@@ -420,6 +435,11 @@ def scatter_callback(app, adata,prefix):
             axis_show=axis_show,
             
         )
+        # Enable selection tools
+        fig.update_layout(
+            dragmode='select',
+            selectdirection='diagonal'
+        )
         if gene_relayout and ('xaxis.range[0]' in gene_relayout and 'yaxis.range[0]' in gene_relayout):
             x_range = [gene_relayout['xaxis.range[0]'], gene_relayout['xaxis.range[1]']]
             y_range = [gene_relayout['yaxis.range[0]'], gene_relayout['yaxis.range[1]']]
@@ -473,3 +493,53 @@ def scatter_callback(app, adata,prefix):
 
 
         return fig
+    
+    # Add callback to handle selected cells and button click
+    @app.callback(
+        [Output(f'{prefix}-selected-cells-store', 'data'),
+         Output(f'{prefix}-selection-status', 'children')],
+        [Input(f'{prefix}-update-plots-button', 'n_clicks')],
+        [State(f'{prefix}-annotation-scatter', 'selectedData'),
+         State(f'{prefix}-clustering-dropdown', 'value'),
+         State(f'{prefix}-x-axis', 'value'),
+         State(f'{prefix}-y-axis', 'value'),
+         State(f'{prefix}-annotation-dropdown', 'value')]
+    )
+    def update_selected_cells(n_clicks, selected_data, clustering_method, x_axis, y_axis, annotation):
+        if n_clicks == 0 or not selected_data or not selected_data.get('points'):
+            return None, ""
+        
+        # Get the selected points
+        selected_points = selected_data['points']
+        
+        # Extract cell indices from the selected points
+        # The points contain the indices of the cells in the original adata
+        selected_indices = []
+        for point in selected_points:
+            # The curveNumber tells us which trace (category) the point belongs to
+            curve_number = point.get('curveNumber', 0)
+            point_number = point.get('pointNumber', 0)
+            
+            # We need to reconstruct the actual cell index
+            # Get all unique categories in order
+            unique_categories = sorted(adata.obs[annotation].unique())
+            selected_category = unique_categories[curve_number]
+            
+            # Get all cells in this category
+            category_mask = adata.obs[annotation] == selected_category
+            category_indices = adata.obs.index[category_mask].tolist()
+            
+            # The point_number is the index within this category
+            if point_number < len(category_indices):
+                selected_indices.append(category_indices[point_number])
+        
+        if selected_indices:
+            n_selected = len(selected_indices)
+            status_msg = html.Div([
+                html.Span(f"✓ {n_selected} cells selected from ", style={'color': 'green'}),
+                html.Span(f"{annotation}", style={'fontWeight': 'bold'}),
+                html.Span(". Other plots will show only these cells.", style={'color': 'green'})
+            ])
+            return selected_indices, status_msg
+        else:
+            return None, ""

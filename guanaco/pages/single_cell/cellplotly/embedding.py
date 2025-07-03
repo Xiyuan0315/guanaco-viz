@@ -65,7 +65,8 @@ def plot_continuous_embedding(
             size=marker_size,
             opacity=opacity,
             colorbar=dict(
-                title=transformation if transformation else color
+                title=transformation if transformation else color,
+                len = 0.8
             )
         ),
         text=embedding_df_sorted[annotation] if annotation else None,

@@ -13,13 +13,20 @@ def plot_stacked_bar(x_meta, y_meta, norm, adata, color_map=None):
     else:
         y_value = 'count'
         y_label = 'Cell Count'
-    categories = sorted(count_df[y_meta].unique())
     
-    # Use provided color_map or fall back to default
-    if color_map is None:
+    # Use provided color_map directly if it's a dictionary (fixed mapping)
+    # Otherwise create mapping based on current categories
+    if isinstance(color_map, dict):
+        # Use the fixed color mapping passed from the callback
+        color_discrete_map = color_map
+    elif color_map is None:
+        # Fallback to default colors for current categories
+        categories = sorted(count_df[y_meta].unique())
         predefined_colors = color_config
         color_discrete_map = {cat: predefined_colors[i % len(predefined_colors)] for i, cat in enumerate(categories)}
     else:
+        # color_map is a list of colors
+        categories = sorted(count_df[y_meta].unique())
         color_discrete_map = {cat: color_map[i % len(color_map)] for i, cat in enumerate(categories)}
 
     # 4. Create plot with the color map

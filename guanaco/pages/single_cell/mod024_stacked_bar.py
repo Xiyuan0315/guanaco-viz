@@ -4,26 +4,44 @@ import dash_draggable
 from guanaco.config import common_config
 
 def generate_stacked_bar_layout(discrete_label_list,prefix):
+    
+    # For single metadata, adjust the label
+    if len(discrete_label_list) == 1:
+        x_label = "Metadata:"
+    else:
+        x_label = "Cell info 1(X-axis):"
 
     x_meta_dropdown = html.Div([
-        html.Label("Cell info 1(X-axis):", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+        html.Label(x_label, style={'fontWeight': 'bold', 'marginBottom': '5px'}),
         dcc.Dropdown(
             id=f'{prefix}-x-meta',
             options=[{'label': meta, 'value': meta} for meta in discrete_label_list],
             value=discrete_label_list[0],
             clearable=False,
-            style={'marginBottom': '15px'}
+            style={'marginBottom': '15px'},
+            disabled=(len(discrete_label_list) == 1)  # Disable if only one option
         )
     ], style={'flex': '1'})
 
+    # Handle case when only one metadata column exists
+    if len(discrete_label_list) > 1:
+        y_options = [{'label': meta, 'value': meta} for meta in discrete_label_list]
+        y_value = discrete_label_list[1]
+        y_disabled = False
+    else:
+        y_options = [{'label': 'N/A - Single metadata mode', 'value': 'none'}]
+        y_value = 'none'
+        y_disabled = True
+    
     y_meta_dropdown = html.Div([
         html.Label("Cell info 2(colour by):", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
         dcc.Dropdown(
             id=f'{prefix}-y-meta',
-            options=[{'label': meta, 'value': meta} for meta in discrete_label_list],
-            value=discrete_label_list[1] if len(discrete_label_list) > 1 else 'none',
+            options=y_options,
+            value=y_value,
             clearable=False,
-            style={'marginBottom': '15px'}
+            style={'marginBottom': '15px'},
+            disabled=y_disabled
         )
     ], style={'flex': '1'})
 

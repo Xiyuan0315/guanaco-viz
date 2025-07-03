@@ -28,8 +28,13 @@ import warnings
 warnings.filterwarnings('ignore', message='.*observed=False.*')
 
 
-def filter_data(adata, annotation, selected_labels):
-    if selected_labels:
+def filter_data(adata, annotation, selected_labels, selected_cells=None):
+    """Filter data based on annotation labels and/or selected cells"""
+    if selected_cells is not None and len(selected_cells) > 0:
+        # Use selected cells if available
+        adata_filtered = adata[selected_cells]
+    elif selected_labels:
+        # Otherwise use label filtering
         cell_indices = adata.obs[annotation].isin(selected_labels)
         adata_filtered = adata[cell_indices]
     else:
@@ -157,10 +162,11 @@ def maker_vis_callback(app, adata, prefix):
          Input(f'{prefix}-heatmap-transformation', 'value'),
          Input(f'{prefix}-heatmap-colorscale-dropdown', 'value'),
          Input(f'{prefix}-heatmap-label-dropdown', 'value'),
-         Input(f'{prefix}-discrete-color-map-dropdown', 'value')]
+         Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
+         Input(f'{prefix}-selected-cells-store', 'data')]
     )
-    def update_heatmap(selected_genes, selected_annotation, selected_labels, transformation, heatmap_color, secondary_annotation, discrete_color_map):
-        filtered_adata = filter_data(adata, selected_annotation, selected_labels)
+    def update_heatmap(selected_genes, selected_annotation, selected_labels, transformation, heatmap_color, secondary_annotation, discrete_color_map, selected_cells):
+        filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
         
         # Use heatmap2 if secondary annotation is different from primary annotation and not "None"
         if secondary_annotation and secondary_annotation != 'None' and secondary_annotation != selected_annotation:
@@ -231,10 +237,11 @@ def maker_vis_callback(app, adata, prefix):
          Input(f'{prefix}-violin-log-or-zscore', 'value'),
         Input(f'{prefix}-show-box1', 'value'),
          Input(f'{prefix}-show-scatter1', 'value'),
-         Input(f'{prefix}-discrete-color-map-dropdown', 'value')]
+         Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
+         Input(f'{prefix}-selected-cells-store', 'data')]
     )
     def update_violin1(selected_tab, selected_genes, selected_annotation, 
-                       selected_labels, transformation, show_box_plot, show_scatter1, discrete_color_map):
+                       selected_labels, transformation, show_box_plot, show_scatter1, discrete_color_map, selected_cells):
         if selected_tab == 'violin-tab':
             # Use discrete color map if selected, otherwise use default
             color_map = None
@@ -245,8 +252,11 @@ def maker_vis_callback(app, adata, prefix):
                     label: discrete_palette[i % len(discrete_palette)] for i, label in enumerate(unique_labels)
                 }
             
+            # Filter data if cells are selected
+            filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
+            
             fig = plot_violin1(
-                adata,
+                filtered_adata,
                 selected_genes,
                 selected_labels,
                 groupby=selected_annotation,
@@ -335,11 +345,12 @@ def maker_vis_callback(app, adata, prefix):
          Input(f'{prefix}-aggregation-type', 'value'),
         Input(f'{prefix}-dotplot-log-or-zscore', 'value'),
          Input(f'{prefix}-dotplot-standardization', 'value'),
-         Input(f'{prefix}-dotmatrix-color-map-dropdown', 'value')]
+         Input(f'{prefix}-dotmatrix-color-map-dropdown', 'value'),
+         Input(f'{prefix}-selected-cells-store', 'data')]
     )
     def update_dotplot(selected_genes, selected_annotation, selected_labels, plot_type, aggregation_type, 
-                       transformation, standardization, color_map):
-        filtered_adata = filter_data(adata, selected_annotation, selected_labels)
+                       transformation, standardization, color_map, selected_cells):
+        filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
         return plot_dot_matrix(
             filtered_adata,
             selected_genes,
@@ -357,15 +368,19 @@ def maker_vis_callback(app, adata, prefix):
         [Input(f'{prefix}-x-meta', 'value'),
          Input(f'{prefix}-y-meta', 'value'),
          Input(f'{prefix}-norm-box', 'value'),
-         Input(f'{prefix}-discrete-color-map-dropdown', 'value')]
+         Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
+         Input(f'{prefix}-selected-cells-store', 'data')]
     )
-    def update_stacked_bar(x_meta, y_meta, norm, discrete_color_map):
+    def update_stacked_bar(x_meta, y_meta, norm, discrete_color_map, selected_cells):
         if x_meta == y_meta:
             raise PreventUpdate
+        
+        # Filter data if cells are selected
+        filtered_adata = adata[selected_cells] if selected_cells else adata
         
         # Create color map if discrete color map is selected
         color_map = None
         if discrete_color_map:
             color_map = palette_json["color_palettes"][discrete_color_map]
         
-        return plot_stacked_bar(x_meta, y_meta, norm, adata, color_map=color_map)
+        return plot_stacked_bar(x_meta, y_meta, norm, filtered_adata, color_map=color_map)

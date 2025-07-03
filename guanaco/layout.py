@@ -5,6 +5,39 @@ from guanaco.pages.single_cell.mod01_scatter import scatter_layout
 from guanaco.pages.single_cell.mod02_other_plots import generate_single_cell_tabs
 import muon as mu
 
+# tip
+def resize_tip_toast():
+    return dbc.Toast(
+        children=[
+            html.P(
+                "Drag the draggable corner at the bottom right of any chart to resize it",
+                className="mb-1",
+            ),
+            dbc.Button("Got it", id="close-tip", size="sm", color="primary"),
+        ],
+        id="tip-modal",
+        header=html.Div(
+            [
+                html.Img(
+                    src="/assets/lamp_guanaco.png",
+                    style={"height": "1.25rem", "marginRight": "0.5rem"},
+                ),
+                html.Span("Tip!"),
+            ],
+            style={"display": "flex", "alignItems": "center"},
+        ),
+        icon=None,
+        duration=30000,
+        is_open=False,
+        style={
+            "position": "fixed",
+            "bottom": 20,
+            "right": 20,
+            "width": 320,
+            "zIndex": 1000,
+        },
+    )
+
 # Footer and footprint
 footprint = html.Div(
     style={
@@ -39,7 +72,7 @@ def navbar(datasets):
             dbc.Container(
                 dbc.Row(
                     [
-                        dbc.Col(html.Img(src="/assets/logo.png", height="60px"), width="auto", align="center"),
+                        dbc.Col(html.Img(src="/assets/logo.png", height="70px"), width="auto", align="center"),
                         dbc.Col(
                             dbc.NavLink(
                                 "GUANACO",
@@ -90,7 +123,7 @@ def description_layout(dataset):
     summary_items = []
     
     # Add description
-    summary_items.append(html.P(dataset.description or "No description provided."))
+    summary_items.append(html.P(dataset.description))
     
     # Add AnnData information if available
     if dataset.adata is not None:

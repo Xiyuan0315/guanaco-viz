@@ -12,13 +12,10 @@ from botocore import UNSIGNED
 from botocore.config import Config
 import muon as mu
 mu.set_options(pull_on_update=False)
-# ----------------------------------------------------------------------------
-# Paths & constants
-# ----------------------------------------------------------------------------
 
 # Get paths from environment variables set by CLI, with fallbacks
-BASE_DIR = Path(os.environ.get('GUANACO_DATA_DIR', 'custom'))
-JSON_PATH = Path(os.environ.get('GUANACO_CONFIG', 'guanaco_v2.json'))
+BASE_DIR = Path(os.environ.get('GUANACO_DATA_DIR', '.'))
+JSON_PATH = Path(os.environ.get("GUANACO_CONFIG", "guanaco.json"))
 
 DEFAULT_COLORS: list[str] = [
     "#E69F00",
@@ -33,7 +30,6 @@ DEFAULT_COLORS: list[str] = [
 class DatasetBundle:
     def __init__(
         self,
-        name: str,
         title: str,
         description: str,
         adata: ad.AnnData | None,
@@ -43,7 +39,7 @@ class DatasetBundle:
         ref_track: dict[str, str] | None,
         color_config: list[str],
     ):
-        self.name = name
+
         self.title = title
         self.description = description
         self.adata = adata
@@ -56,7 +52,7 @@ class DatasetBundle:
     def __repr__(self):
         cells_info = f"{self.adata.n_obs} cells" if self.adata else "no AnnData"
         tracks_info = f"{len(self.genome_tracks)} genome tracks" if self.genome_tracks else "no genome tracks"
-        return f"<DatasetBundle {self.name}: {cells_info}, {tracks_info}>"
+        return f"<DatasetBundle {self.title}: {cells_info}, {tracks_info}>"
 
 # ----------------------------------------------------------------------------
 # Config helpers
@@ -82,6 +78,7 @@ def load_adata(
     """
 
     path = Path(file)
+    print(path)
     if not path.is_absolute():
         path = base_dir / path
     if not path.exists():
@@ -202,15 +199,55 @@ def load_tracks_from_s3(
 
     return tracks_dict
 
-# ----------------------------------------------------------------------------
 # Reference genomes
-# ----------------------------------------------------------------------------
-
-_REF_URLS: dict[str, str] = {
-    "mm10": "https://hgdownload.cse.ucsc.edu/goldenPath/mm10/bigZips/mm10.2bit",
-    "mm9": "https://hgdownload.cse.ucsc.edu/goldenPath/mm9/bigZips/mm9.2bit",
+_REF_URLS = {
+    # Human
     "hg38": "https://hgdownload.cse.ucsc.edu/goldenPath/hg38/bigZips/hg38.2bit",
     "hg19": "https://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.2bit",
+    "hg18": "https://hgdownload.cse.ucsc.edu/goldenPath/hg18/bigZips/hg18.2bit",
+
+    # Mouse
+    "mm39": "https://hgdownload.soe.ucsc.edu/goldenPath/mm39/bigZips/mm39.2bit",
+    "mm10": "https://hgdownload.cse.ucsc.edu/goldenPath/mm10/bigZips/mm10.2bit",
+    "mm9": "https://hgdownload.cse.ucsc.edu/goldenPath/mm9/bigZips/mm9.2bit",
+
+    # Rat
+    "rn6": "https://hgdownload.cse.ucsc.edu/goldenPath/rn6/bigZips/rn6.2bit",
+    "rn5": "https://hgdownload.cse.ucsc.edu/goldenPath/rn5/bigZips/rn5.2bit",
+
+    # Zebrafish
+    "danRer11": "https://hgdownload.cse.ucsc.edu/goldenPath/danRer11/bigZips/danRer11.2bit",
+    "danRer10": "https://hgdownload.cse.ucsc.edu/goldenPath/danRer10/bigZips/danRer10.2bit",
+
+    # Fruit fly
+    "dm6": "https://hgdownload.cse.ucsc.edu/goldenPath/dm6/bigZips/dm6.2bit",
+    "dm3": "https://hgdownload.cse.ucsc.edu/goldenPath/dm3/bigZips/dm3.2bit",
+
+    # Nematode (worm)
+    "ce11": "https://hgdownload.cse.ucsc.edu/goldenPath/ce11/bigZips/ce11.2bit",
+    "ce10": "https://hgdownload.cse.ucsc.edu/goldenPath/ce10/bigZips/ce10.2bit",
+
+    # Yeast
+    "sacCer3": "https://hgdownload.cse.ucsc.edu/goldenPath/sacCer3/bigZips/sacCer3.2bit",
+
+    # Chicken
+    "galGal6": "https://hgdownload.cse.ucsc.edu/goldenPath/galGal6/bigZips/galGal6.2bit",
+
+    # Xenopus
+    "xenTro9": "https://hgdownload.cse.ucsc.edu/goldenPath/xenTro9/bigZips/xenTro9.2bit",
+
+    # Dog
+    "canFam3": "https://hgdownload.cse.ucsc.edu/goldenPath/canFam3/bigZips/canFam3.2bit",
+
+    # Cow
+    "bosTau9": "https://hgdownload.cse.ucsc.edu/goldenPath/bosTau9/bigZips/bosTau9.2bit",
+
+    # Pig
+    "susScr11": "https://hgdownload.cse.ucsc.edu/goldenPath/susScr11/bigZips/susScr11.2bit",
+
+    # Macaque
+    "rheMac10": "https://hgdownload.cse.ucsc.edu/goldenPath/rheMac10/bigZips/rheMac10.2bit"
+
 }
 
 def get_ref_track(genome: str) -> dict[str, str]:
@@ -249,19 +286,24 @@ def initialize_data(
     for dataset_key, dataset_cfg in cfg.items():
         if dataset_key == "color" or dataset_key == "genome":
             continue
-
+        
+        # Skip if not a dataset configuration (dict)
+        if not isinstance(dataset_cfg, dict):
+            continue
+            
         # Handle AnnData section (optional)
         adata = None
         gene_markers = None
         label_list = None
-        
-        if "anndata" in dataset_cfg and dataset_cfg["anndata"]:
-            adata_file = dataset_cfg["anndata"][0]
+                
+        if "sc_data" in dataset_cfg and dataset_cfg["sc_data"]:
+            adata_file = dataset_cfg["sc_data"]
             adata = load_adata(adata_file, max_cells=max_cells, seed=seed, base_dir=base_dir)
             # Use provided markers or default to first 6 genes
             gene_markers = dataset_cfg.get("markers", adata.var_names[:6].tolist() if adata else None)
             label_list = get_discrete_labels(adata) if adata else None
-        
+
+
         # Handle genome browser section (optional)
         genome_tracks = None
         ref_track = None
@@ -284,8 +326,7 @@ def initialize_data(
         # Create dataset bundle only if at least one data type is present
         if adata is not None or genome_tracks is not None:
             dataset_bundle = DatasetBundle(
-                name=dataset_key,
-                title=dataset_cfg.get("title", dataset_key),
+                title=dataset_key,
                 description=dataset_cfg.get("description", ""),
                 adata=adata,
                 gene_markers=gene_markers,
@@ -299,8 +340,6 @@ def initialize_data(
             print(f"Warning: Dataset '{dataset_key}' has neither AnnData nor genome browser data. Skipping.")
 
     return datasets
-
-
 
 datasets = initialize_data()
 for name, dataset in datasets.items():
