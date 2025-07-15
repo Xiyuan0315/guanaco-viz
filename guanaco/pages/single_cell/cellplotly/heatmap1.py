@@ -11,10 +11,24 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
     if num_genes == 0 or num_labels == 0:
         raise PreventUpdate
 
+    # Initialize variables for tracking filtered cells
+    is_backed = hasattr(adata, 'isbacked') and adata.isbacked
+    filtered_obs = adata.obs
+    filtered_obs_names = adata.obs_names
+    
     # Filter data based on selected labels
     if labels:
         cell_indices = adata.obs[groupby].isin(labels)
-        adata = adata[cell_indices]
+        if is_backed:
+            # For backed AnnData, work with indices directly
+            cell_indices_array = np.where(cell_indices)[0]
+            filtered_obs = adata.obs.iloc[cell_indices_array]
+            filtered_obs_names = adata.obs_names[cell_indices_array]
+        else:
+            # For regular AnnData, create a view
+            adata = adata[cell_indices]
+            filtered_obs = adata.obs
+            filtered_obs_names = adata.obs_names
     
     genes = list(reversed(genes))
     # Filter out genes that don't exist in the dataset
@@ -37,16 +51,26 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
         return fig
     
     # For backed AnnData, we need to extract data directly without creating views
-    if hasattr(adata, 'isbacked') and adata.isbacked:
+    if is_backed:
         # Extract gene indices for valid genes
         gene_indices = [adata.var_names.get_loc(gene) for gene in valid_genes]
         # Extract expression data directly from the backed file
-        if hasattr(adata.X, 'toarray'):
-            # For sparse backed data
-            gene_expression_matrix = adata.X[:, gene_indices].toarray()
+        if labels and 'cell_indices_array' in locals():
+            # If we filtered cells, extract only those rows
+            if hasattr(adata.X, 'toarray'):
+                # For sparse backed data
+                gene_expression_matrix = adata.X[cell_indices_array, :][:, gene_indices].toarray()
+            else:
+                # For dense backed data
+                gene_expression_matrix = adata.X[cell_indices_array, :][:, gene_indices]
         else:
-            # For dense backed data
-            gene_expression_matrix = adata.X[:, gene_indices]
+            # No cell filtering, extract all cells
+            if hasattr(adata.X, 'toarray'):
+                # For sparse backed data
+                gene_expression_matrix = adata.X[:, gene_indices].toarray()
+            else:
+                # For dense backed data
+                gene_expression_matrix = adata.X[:, gene_indices]
     else:
         # Original code for non-backed AnnData
         adata_selected = adata[:, valid_genes]
@@ -60,8 +84,8 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
     elif transformation == "z_score":
         gene_expression_matrix = (gene_expression_matrix - gene_expression_matrix.mean(axis=0)) / gene_expression_matrix.std(axis=0)
 
-    df = pd.DataFrame(gene_expression_matrix, columns=valid_genes, index=adata.obs_names)
-    df[groupby] = adata.obs[groupby].values
+    df = pd.DataFrame(gene_expression_matrix, columns=valid_genes, index=filtered_obs_names)
+    df[groupby] = filtered_obs[groupby].values
     heatmap_df = df.copy()
 
     # Sort by groupby maintaining the order of labels if provided

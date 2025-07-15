@@ -8,7 +8,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 # Import visualization functions
-from guanaco.pages.single_cell.cellplotly.embedding import plot_categorical_embedding, plot_continuous_embedding
+from guanaco.pages.single_cell.cellplotly.embedding import plot_categorical_embedding, plot_continuous_embedding, plot_combined_embedding
 from guanaco.pages.single_cell.cellplotly.heatmap1 import plot_heatmap1
 from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_heatmap2
 from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
@@ -482,7 +482,7 @@ def generate_single_cell_tabs(adata, default_gene_markers, discrete_label_list, 
         dcc.Tab(label='Pseudotime Plot', value='pseudotime-tab', children=[
             html.Div(generate_pseudotime_layout(prefix))
         ]),
-    ], id=f'{prefix}-single-cell-tabs', value='heatmap-tab', className='custom-tabs')
+    ], id=f'{prefix}-single-cell-tabs', value='dotplot-tab', className='custom-tabs')
 
     return dbc.Row([
         dbc.Col(
@@ -702,7 +702,6 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-x-axis', 'value'),
          Input(f'{prefix}-y-axis', 'value'),
          Input(f'{prefix}-annotation-dropdown', 'value'),
-        Input(f'{prefix}-scatter-gene-selection', 'value'),
          Input(f'{prefix}-marker-size-slider', 'value'),
          Input(f'{prefix}-opacity-slider', 'value'),
          Input(f'{prefix}-scatter-legend-toggle', 'value'),
@@ -713,7 +712,7 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-scatter-color-map-dropdown', 'value'),  # Add for continuous color maps
          ]
     )
-    def update_annotation_scatter(clustering_method, x_axis, y_axis, annotation, gene, 
+    def update_annotation_scatter(clustering_method, x_axis, y_axis, annotation, 
                                 marker_size, opacity, legend_show, axis_show, 
                                 discrete_color_map, transformation, order, continuous_color_map):
         if not annotation:
@@ -746,7 +745,7 @@ def single_cell_callbacks(app, adata, prefix):
             
             fig = plot_categorical_embedding(
                 adata=adata,
-                gene=gene,
+                gene=None,  # Don't pass gene to avoid unnecessary computation
                 embedding_key=clustering_method,
                 color=annotation,
                 x_axis=x_axis,
@@ -798,7 +797,7 @@ def single_cell_callbacks(app, adata, prefix):
             color_map=color_map or 'Viridis',
             marker_size=marker_size,
             opacity=opacity,
-            annotation = annotation,
+            annotation = None,  # Don't pass annotation for gene expression plots
             axis_show=axis_show,
         )
         

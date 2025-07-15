@@ -8,13 +8,47 @@ def plot_dot_matrix(adata, genes, groupby, selected_labels, aggregation='mean', 
     if not valid_genes:
         raise PreventUpdate
 
+    # Initialize variables for tracking filtered cells
+    is_backed = hasattr(adata, 'isbacked') and adata.isbacked
+    filtered_obs = adata.obs
+    
     # Filter data based on selected labels
     if selected_labels:
         cell_indices = adata.obs[groupby].isin(selected_labels)
-        adata = adata[cell_indices]
-
-    expression_data = adata.to_df()[valid_genes].copy()
-    expression_data[groupby] = adata.obs[groupby].values
+        if is_backed:
+            # For backed AnnData, work with indices directly
+            cell_indices_array = np.where(cell_indices)[0]
+            filtered_obs = adata.obs.iloc[cell_indices_array]
+            # Extract expression data for filtered cells and valid genes
+            gene_indices = [adata.var_names.get_loc(gene) for gene in valid_genes]
+            if hasattr(adata.X, 'toarray'):
+                # For sparse backed data
+                expression_matrix = adata.X[cell_indices_array, :][:, gene_indices].toarray()
+            else:
+                # For dense backed data
+                expression_matrix = adata.X[cell_indices_array, :][:, gene_indices]
+            expression_data = pd.DataFrame(expression_matrix, columns=valid_genes, index=filtered_obs.index)
+        else:
+            # For regular AnnData, create a view
+            adata = adata[cell_indices]
+            filtered_obs = adata.obs
+            expression_data = adata.to_df()[valid_genes].copy()
+    else:
+        # No filtering needed
+        if is_backed:
+            # Extract expression data for all cells and valid genes
+            gene_indices = [adata.var_names.get_loc(gene) for gene in valid_genes]
+            if hasattr(adata.X, 'toarray'):
+                # For sparse backed data
+                expression_matrix = adata.X[:, gene_indices].toarray()
+            else:
+                # For dense backed data
+                expression_matrix = adata.X[:, gene_indices]
+            expression_data = pd.DataFrame(expression_matrix, columns=valid_genes, index=adata.obs.index)
+        else:
+            expression_data = adata.to_df()[valid_genes].copy()
+    
+    expression_data[groupby] = filtered_obs[groupby].values
 
     if transformation == 'log':
         expression_data[valid_genes] = np.log1p(expression_data[valid_genes])

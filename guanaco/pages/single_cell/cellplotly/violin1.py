@@ -9,10 +9,15 @@ def filter_data(adata, annotation, selected_labels):
     if selected_labels:
         # Filter the data based on the selected annotation labels
         cell_indices = adata.obs[annotation].isin(selected_labels)
-        adata_filtered = adata[cell_indices]
+        # For backed AnnData, we need to handle filtering differently
+        if hasattr(adata, 'isbacked') and adata.isbacked:
+            # Return the original adata with indices, will handle filtering later
+            return adata, cell_indices
+        else:
+            adata_filtered = adata[cell_indices]
+            return adata_filtered, None
     else:
-        adata_filtered = adata
-    return adata_filtered
+        return adata, None
 
 def plot_violin1(adata, genes,labels, groupby, transformation = None, show_box=False, show_points=False , groupby_label_color_map = None):
 
@@ -23,7 +28,7 @@ def plot_violin1(adata, genes,labels, groupby, transformation = None, show_box=F
     if not genes:
         return go.Figure()
 
-    filtered_adata = filter_data(adata, groupby, labels)
+    filtered_adata, cell_indices = filter_data(adata, groupby, labels)
     unique_labels = sorted(adata.obs[groupby].unique()) 
     if groupby_label_color_map is None:
         groupby_label_color_map = {
@@ -40,16 +45,18 @@ def plot_violin1(adata, genes,labels, groupby, transformation = None, show_box=F
     for i, gene in enumerate(genes):
         if gene in adata.var_names:
             # For backed AnnData, we need to extract data directly without creating views
-            if hasattr(filtered_adata, 'isbacked') and filtered_adata.isbacked:
+            if hasattr(filtered_adata, 'isbacked') and filtered_adata.isbacked and cell_indices is not None:
                 # Extract gene index
                 gene_idx = filtered_adata.var_names.get_loc(gene)
+                # Get the indices of cells to extract
+                cell_indices_array = np.where(cell_indices)[0]
                 # Extract expression data directly from the backed file
                 if hasattr(filtered_adata.X, 'toarray'):
-                    gene_expression_matrix = filtered_adata.X[:, gene_idx].toarray().flatten()
+                    gene_expression_matrix = filtered_adata.X[cell_indices_array, gene_idx].toarray().flatten()
                 else:
-                    gene_expression_matrix = filtered_adata.X[:, gene_idx].flatten()
+                    gene_expression_matrix = filtered_adata.X[cell_indices_array, gene_idx].flatten()
             else:
-                # Original code for non-backed AnnData
+                # Original code for non-backed AnnData or when no filtering is applied
                 gene_expression_matrix = filtered_adata[:, gene].X.toarray().flatten()
         else:
             raise ValueError(f"Gene '{gene}' not found in adata.var_names.")
@@ -60,9 +67,18 @@ def plot_violin1(adata, genes,labels, groupby, transformation = None, show_box=F
         elif transformation == 'z_score':
             gene_expression_matrix = (gene_expression_matrix - gene_expression_matrix.mean(axis=0)) / gene_expression_matrix.std(axis=0)
 
+        # Get the appropriate observations based on whether we filtered or not
+        if hasattr(filtered_adata, 'isbacked') and filtered_adata.isbacked and cell_indices is not None:
+            # For backed AnnData with filtering, use the filtered observations
+            cell_indices_array = np.where(cell_indices)[0]
+            obs_values = filtered_adata.obs.iloc[cell_indices_array][groupby]
+        else:
+            # For non-backed AnnData or no filtering
+            obs_values = filtered_adata.obs[groupby]
+            
         df = pd.DataFrame({
             'Expression': gene_expression_matrix,
-            groupby: filtered_adata.obs[groupby],
+            groupby: obs_values,
             'Gene': gene
         })
 
