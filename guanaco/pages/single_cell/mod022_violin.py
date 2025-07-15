@@ -60,10 +60,10 @@ def generate_violin_layout(adata, default_gene_markers,discrete_label_list,prefi
         id=f'{prefix}-p-value-selection',
         options=[
             {'label': 'None', 'value': 'None'},
-            {'label': 'Within Group', 'value': 'binary'},
-            {'label': 'Between Group', 'value': 'multi'},
+            {'label': 'Within Group (compare hues)', 'value': 'within'},
+            {'label': 'Between Group (compare groups)', 'value': 'between'},
         ],
-        value='binary',
+        value='within',
         clearable=False
     )
 

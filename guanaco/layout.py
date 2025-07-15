@@ -1,8 +1,7 @@
 import dash_bootstrap_components as dbc
 from dash import html, dcc
 from guanaco.pages.browser.gene_browser import gene_browser_layout
-from guanaco.pages.single_cell.mod01_scatter import scatter_layout
-from guanaco.pages.single_cell.mod02_other_plots import generate_single_cell_tabs
+from guanaco.pages.single_cell.single_cell_plots import scatter_layout, generate_single_cell_tabs
 import muon as mu
 
 # tip

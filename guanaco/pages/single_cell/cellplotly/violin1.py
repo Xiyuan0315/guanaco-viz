@@ -39,7 +39,18 @@ def plot_violin1(adata, genes,labels, groupby, transformation = None, show_box=F
     y_positions = y_positions[::-1]  # Reverse the list
     for i, gene in enumerate(genes):
         if gene in adata.var_names:
-            gene_expression_matrix = filtered_adata[:, gene].X.toarray().flatten()
+            # For backed AnnData, we need to extract data directly without creating views
+            if hasattr(filtered_adata, 'isbacked') and filtered_adata.isbacked:
+                # Extract gene index
+                gene_idx = filtered_adata.var_names.get_loc(gene)
+                # Extract expression data directly from the backed file
+                if hasattr(filtered_adata.X, 'toarray'):
+                    gene_expression_matrix = filtered_adata.X[:, gene_idx].toarray().flatten()
+                else:
+                    gene_expression_matrix = filtered_adata.X[:, gene_idx].flatten()
+            else:
+                # Original code for non-backed AnnData
+                gene_expression_matrix = filtered_adata[:, gene].X.toarray().flatten()
         else:
             raise ValueError(f"Gene '{gene}' not found in adata.var_names.")
 

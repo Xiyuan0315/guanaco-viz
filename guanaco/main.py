@@ -6,14 +6,14 @@ from guanaco.layout import (
 )
 from guanaco.pages.browser.gene_browser import gene_browser_callbacks
 from guanaco.pages.single_cell.single_cell_plots import single_cell_callbacks
-from guanaco.data_loader import initialize_data
+from guanaco.data_loader import datasets  # Already loaded at module level in data_loader.py
 import muon as mu
 import anndata as ad
 
 mu.set_options(pull_on_update=False)
 
-# Load datasets - initialize_data will use environment variables set by CLI
-datasets = initialize_data()
+# Note: datasets is already loaded when data_loader.py was imported
+# No need to call initialize_data() again!
 
 # Utility function
 def get_discrete_labels(adata: ad.AnnData, *, max_unique: int = 50) -> list[str]:

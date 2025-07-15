@@ -53,6 +53,11 @@ def parse_args():
         help="Maximum number of cells to load per dataset"
     )
     
+    parser.add_argument(
+        "--backed-mode",
+        action="store_true",
+        help="Enable backed mode for memory-efficient loading of large datasets"
+    )
     
     args = parser.parse_args()
     
@@ -70,6 +75,10 @@ def parse_args():
 
 def main():
     """Main entry point for GUANACO CLI."""
+    import time
+    import sys
+    from guanaco.progress_utils import Spinner
+    
     args = parse_args()
     
     # Set environment variables from CLI args
@@ -78,12 +87,53 @@ def main():
     os.environ['GUANACO_CONFIG'] = str(config_path)
     os.environ['GUANACO_MAX_CELLS'] = str(args.max_cells)
     
-    print("Starting GUANACO server...")
-    print(f"Config file: {args.config}")
-    print(f"Data directory: {args.data_dir}")
-    print(f"Server will run on {args.host}:{args.port}")
-    print(f"Debug mode: {args.debug}")
-    from guanaco.main import app
+    # Set backed mode if enabled
+    if args.backed_mode:
+        os.environ['GUANACO_BACKED_MODE'] = 'True'
+    
+    print("🧬 Starting GUANACO server...")
+    print(f"📄 Config file: {args.config}")
+    print(f"📁 Data directory: {args.data_dir}")
+    print(f"🌐 Server will run on {args.host}:{args.port}")
+    print(f"🐛 Debug mode: {args.debug}")
+    print(f"💾 Backed mode: {args.backed_mode}")
+    print(f"📊 Max cells per dataset: {args.max_cells:,}")
+    print("─" * 60)
+    
+    start_time = time.time()
+    
+    try:
+        # Load core libraries
+        with Spinner("Loading core libraries (scanpy, muon)...Please wait 5-10 seconds..."):
+            import anndata 
+            import muon 
+        
+        # Load visualization
+        with Spinner("Loading visualization libraries (matplotlib, plotly)..."):
+            import matplotlib
+            matplotlib.use('Agg')
+            import plotly
+        
+        
+        with Spinner("Importing GUANACO modules and Loading data..."):
+            from guanaco.main import app
+        
+        elapsed = time.time() - start_time
+        print(f"\n✅ Startup completed in {elapsed:.1f} seconds")
+        print("─" * 60)
+        
+    except KeyboardInterrupt:
+        print("\n\n❌ Startup cancelled by user")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n\n❌ Error during startup: {e}")
+        import traceback
+        if args.debug:
+            traceback.print_exc()
+        sys.exit(1)
+    
+    # Now actually start the server
+    print()  # Empty line before Flask messages
     app.run_server(host=args.host, debug=args.debug, port=args.port)
 
 if __name__ == "__main__":

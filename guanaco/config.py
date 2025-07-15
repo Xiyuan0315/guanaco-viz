@@ -5,7 +5,7 @@ common_config = {
         'scale': 1
     },
     'displaylogo': False,
-    'modeBarButtonsToRemove': ['select', 'lasso2d','pan2d','zoom2d','zoomIn2d','zoomOut2d','autoScale2d']
+    'modeBarButtonsToRemove': ['select', 'lasso2d','pan2d','zoom2d','autoScale2d']
 }
 
 scatter_config = {

@@ -5,7 +5,16 @@ import pandas as pd
 import plotly.express as px
 
 
-def plot_heatmap2(adata, genes, groupby1, groupby2, labels=None, log=False, z_score=False,boundary=False,color_map='Viridis',groupby1_label_color_map=None,groupby2_label_color_map=None):
+def plot_heatmap2_continuous(adata, genes, groupby1, continuous_key, labels=None, log=False, z_score=False, 
+                           color_map='Viridis', groupby1_label_color_map=None):
+    """
+    Simplified heatmap for continuous secondary annotation (e.g., pseudotime).
+    Orders cells by the continuous value and shows primary annotation as colored bars below.
+    """
+    # Filter data based on selected labels
+    if labels:
+        cell_indices = adata.obs[groupby1].isin(labels)
+        adata = adata[cell_indices]
     
     # Filter out genes that don't exist in the dataset
     valid_genes = [gene for gene in genes if gene in adata.var_names]
@@ -26,8 +35,267 @@ def plot_heatmap2(adata, genes, groupby1, groupby2, labels=None, log=False, z_sc
         )
         return fig
  
-    adata_selected = adata[:, valid_genes]
-    gene_expression_matrix = adata_selected.X.toarray()
+    # For backed AnnData, we need to extract data directly without creating views
+    if hasattr(adata, 'isbacked') and adata.isbacked:
+        # Extract gene indices for valid genes
+        gene_indices = [adata.var_names.get_loc(gene) for gene in valid_genes]
+        # Extract expression data directly from the backed file
+        if hasattr(adata.X, 'toarray'):
+            gene_expression_matrix = adata.X[:, gene_indices].toarray()
+        else:
+            gene_expression_matrix = adata.X[:, gene_indices]
+    else:
+        # Original code for non-backed AnnData
+        adata_selected = adata[:, valid_genes]
+        gene_expression_matrix = adata_selected.X.toarray()
+    
+    if log:
+        gene_expression_matrix = np.log1p(gene_expression_matrix)
+    if z_score:
+        gene_expression_matrix = (gene_expression_matrix - gene_expression_matrix.mean(axis=0)) / gene_expression_matrix.std(axis=0)
+
+    gene_expression_df = pd.DataFrame(gene_expression_matrix, columns=valid_genes)
+    gene_expression_df.insert(0, 'CellID', adata.obs_names)
+
+    # Process labels
+    label_df = pd.DataFrame(adata.obs[[groupby1, continuous_key]])
+    label_df.insert(0, 'CellID', adata.obs_names)
+    
+    heatmap_df = pd.merge(gene_expression_df, label_df, on='CellID')
+    
+    # Sort by continuous value (e.g., pseudotime)
+    sorted_heatmap_df = heatmap_df.sort_values(continuous_key)
+    
+    heatmap_gene_matrix = sorted_heatmap_df[valid_genes].values.T
+    
+    # Get unique labels for coloring
+    unique_labels = sorted_heatmap_df[groupby1].unique()
+    colors1 = px.colors.qualitative.Plotly
+    color_map1 = dict(zip(unique_labels, colors1))
+    
+    if groupby1_label_color_map:
+        color_map1 = groupby1_label_color_map
+    
+    # Calculate heights
+    heatmap_height = 40 * len(valid_genes)
+    bar_chart_height = 30
+    continuous_bar_height = 30
+    
+    # Create subplots (3 rows: heatmap, continuous values, categorical annotation)
+    fig = make_subplots(
+        rows=3, cols=1,
+        row_heights=[heatmap_height, continuous_bar_height, bar_chart_height],
+        shared_xaxes=True,
+        vertical_spacing=0.01
+    )
+    
+    # Hover text
+    hover_text = [[f"CellID: {cell_id}<br>{groupby1}: {group}<br>{continuous_key}: {cont:.4f}<br>Gene: {gene}<br>Expression: {expr:.2f}"
+                for cell_id, group, cont, expr in zip(sorted_heatmap_df['CellID'], sorted_heatmap_df[groupby1], 
+                                                      sorted_heatmap_df[continuous_key], row)]
+                for gene, row in zip(valid_genes, heatmap_gene_matrix)]
+    
+    # Add heatmap
+    heatmap = go.Heatmap(
+        z=heatmap_gene_matrix,
+        x=list(range(len(sorted_heatmap_df))),
+        y=valid_genes,
+        colorscale=color_map,
+        colorbar=dict(
+            title=f'Expression(log)' if log else f'Expression(z-score)' if z_score else 'Expression',
+            len=0.4,
+            y=1,
+            yanchor='top'
+        ),
+        text=hover_text,
+        hoverinfo='text',
+        zmin=heatmap_gene_matrix.min(),
+        zmax=heatmap_gene_matrix.max(),
+    )
+    fig.add_trace(heatmap, row=1, col=1)
+    
+    # Add continuous values as a heatmap strip
+    continuous_values = sorted_heatmap_df[continuous_key].values.reshape(1, -1)
+    fig.add_trace(go.Heatmap(
+        z=continuous_values,
+        x=list(range(len(sorted_heatmap_df))),
+        y=[continuous_key],
+        colorscale='Viridis',
+        showscale=False,
+        hovertemplate=f'{continuous_key}: %{{z:.4f}}<extra></extra>'
+    ), row=2, col=1)
+    
+    # Add categorical annotation as a colored heatmap strip
+    # Map categories to numeric values for visualization
+    category_to_num = {cat: i for i, cat in enumerate(sorted_heatmap_df[groupby1].unique())}
+    category_values = sorted_heatmap_df[groupby1].map(category_to_num).values.reshape(1, -1)
+    
+    # Create custom colorscale based on the color mapping
+    unique_categories = sorted(sorted_heatmap_df[groupby1].unique())
+    n_categories = len(unique_categories)
+    
+    # Create discrete colorscale
+    colorscale = []
+    for i, cat in enumerate(unique_categories):
+        colorscale.append([i/n_categories, color_map1[cat]])
+        colorscale.append([(i+1)/n_categories, color_map1[cat]])
+    
+    fig.add_trace(go.Heatmap(
+        z=category_values,
+        x=list(range(len(sorted_heatmap_df))),
+        y=[groupby1],
+        colorscale=colorscale,
+        showscale=False,
+        text=[[cat for cat in sorted_heatmap_df[groupby1]]],
+        hovertemplate='%{text}<extra></extra>',
+        zmin=-0.5,
+        zmax=n_categories-0.5
+    ), row=3, col=1)
+    
+    # Create legend annotations
+    legend_annotations = []
+    legend_start_x = 1.01
+    legend_start_y = 0.5
+    
+    legend_annotations.append(dict(
+        x=legend_start_x, y=legend_start_y,
+        xref="paper", yref="paper",
+        text=f"<b>{groupby1}</b>",
+        showarrow=False,
+        font=dict(size=12, color='black'),
+        xanchor='left', yanchor='top'
+    ))
+    
+    # Add legend items
+    for i, label in enumerate(unique_labels):
+        y_pos = legend_start_y - 0.08 - (i * 0.04)
+        legend_annotations.append(dict(
+            x=legend_start_x, y=y_pos,
+            xref="paper", yref="paper",
+            text=f"<span style='color:{color_map1[label]}'>■</span> {label}",
+            showarrow=False,
+            font=dict(size=10),
+            xanchor='left', yanchor='middle'
+        ))
+    
+    # Update layout
+    fig.update_layout(
+        barmode='stack',
+        showlegend=False,
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        xaxis=dict(
+            visible=False,
+            constrain='domain',
+            constraintoward='center'
+        ),
+        xaxis2=dict(
+            visible=False,
+            constrain='domain',
+            constraintoward='center'
+        ),
+        xaxis3=dict(
+            visible=False,
+            constrain='domain',
+            constraintoward='center'
+        ),
+        yaxis=dict(
+            tickmode='array',
+            tickvals=list(range(len(valid_genes))),
+            ticktext=valid_genes,
+            showgrid=False,
+            zeroline=False,
+            tickfont=dict(size=14),
+            constrain='domain',
+            constraintoward='middle'
+        ),
+        yaxis2=dict(
+            tickmode='array',
+            tickvals=[0],
+            ticktext=[continuous_key],
+            showgrid=False,
+            zeroline=False,
+            tickfont=dict(size=12),
+            constrain='domain',
+            constraintoward='middle'
+        ),
+        yaxis3=dict(
+            tickmode='array',
+            tickvals=[0],
+            ticktext=[groupby1],
+            showgrid=False,
+            zeroline=False,
+            tickfont=dict(size=12),
+            constrain='domain',
+            constraintoward='middle'
+        ),
+        annotations=legend_annotations,
+        hovermode='closest',
+        height=max(450, sum([heatmap_height, continuous_bar_height, bar_chart_height])),
+        margin=dict(t=50, b=50, l=50, r=150),
+    )
+    
+    return fig
+
+
+def plot_heatmap2(adata, genes, groupby1, groupby2, labels=None, log=False, z_score=False,boundary=False,color_map='Viridis',groupby1_label_color_map=None,groupby2_label_color_map=None):
+    
+    # Filter data based on selected labels
+    if labels:
+        cell_indices = adata.obs[groupby1].isin(labels)
+        adata = adata[cell_indices]
+    
+    # Helper function to check if annotation is continuous
+    def is_continuous_annotation(adata, annotation, threshold=50):
+        """Check if an annotation is continuous based on unique value count and data type."""
+        if annotation not in adata.obs.columns:
+            return False
+        
+        # Check data type
+        dtype = adata.obs[annotation].dtype
+        if dtype in ['float32', 'float64', 'int32', 'int64']:
+            # Numeric type - check unique values
+            n_unique = adata.obs[annotation].nunique()
+            return n_unique >= threshold
+        return False
+    
+    # If secondary annotation is continuous, use the specialized function
+    if is_continuous_annotation(adata, groupby2):
+        return plot_heatmap2_continuous(adata, genes, groupby1, groupby2, labels, log, z_score, 
+                                      color_map, groupby1_label_color_map)
+    
+    # Filter out genes that don't exist in the dataset
+    valid_genes = [gene for gene in genes if gene in adata.var_names]
+    if not valid_genes:
+        # Return empty figure if no valid genes
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No valid genes found in the dataset",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=14)
+        )
+        fig.update_layout(
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            height=400
+        )
+        return fig
+ 
+    # For backed AnnData, we need to extract data directly without creating views
+    if hasattr(adata, 'isbacked') and adata.isbacked:
+        # Extract gene indices for valid genes
+        gene_indices = [adata.var_names.get_loc(gene) for gene in valid_genes]
+        # Extract expression data directly from the backed file
+        if hasattr(adata.X, 'toarray'):
+            gene_expression_matrix = adata.X[:, gene_indices].toarray()
+        else:
+            gene_expression_matrix = adata.X[:, gene_indices]
+    else:
+        # Original code for non-backed AnnData
+        adata_selected = adata[:, valid_genes]
+        gene_expression_matrix = adata_selected.X.toarray()
     
     if log:
         gene_expression_matrix = np.log1p(gene_expression_matrix)  # log1p for log(1 + x) transformation
@@ -36,17 +304,13 @@ def plot_heatmap2(adata, genes, groupby1, groupby2, labels=None, log=False, z_sc
         gene_expression_matrix = (gene_expression_matrix - gene_expression_matrix.mean(axis=0)) / gene_expression_matrix.std(axis=0)
 
     gene_expression_df = pd.DataFrame(gene_expression_matrix, columns=valid_genes)
-    gene_expression_df.insert(0, 'CellID', adata_selected.obs_names)
+    gene_expression_df.insert(0, 'CellID', adata.obs_names)
 
     # Process labels and combine groupby1 and groupby2
     label_df = pd.DataFrame(adata.obs[[groupby1, groupby2]])
     label_df.insert(0, 'CellID', adata.obs_names)
     
     heatmap_df = pd.merge(gene_expression_df, label_df, on='CellID')
-    
-    # Filter data to only include selected labels if provided
-    if labels:
-        heatmap_df = heatmap_df[heatmap_df[groupby1].isin(labels)]
     
     # Sort by groupby1 using the input labels order, then by groupby2
     if labels:
@@ -94,8 +358,8 @@ def plot_heatmap2(adata, genes, groupby1, groupby2, labels=None, log=False, z_sc
     
     # Calculate the height dynamically - remove annotation rows
     heatmap_height = 40 * len(valid_genes)
-    bar_chart_height1 = 40
-    bar_chart_height2 = 40
+    bar_chart_height1 = 30
+    bar_chart_height2 = 30
     
     # Create a list for row_heights directly (only 3 rows now)
     total_height = [heatmap_height, bar_chart_height1, bar_chart_height2]
@@ -247,15 +511,21 @@ def plot_heatmap2(adata, genes, groupby1, groupby2, labels=None, log=False, z_sc
         plot_bgcolor='white',  
         paper_bgcolor='white',  
         xaxis=dict(
-            range=[0, total_x_range],  
+            range=[0, total_x_range],
+            constrain='domain',
+            constraintoward='center'
         ),
         xaxis2=dict(
             range=[0, total_x_range],  
-            visible=False,  
+            visible=False,
+            constrain='domain',
+            constraintoward='center'
         ),
         xaxis3=dict(
             range=[0, total_x_range],  
-            visible=False,  
+            visible=False,
+            constrain='domain',
+            constraintoward='center'
         ),
         yaxis=dict(
             tickmode='array',
@@ -264,7 +534,9 @@ def plot_heatmap2(adata, genes, groupby1, groupby2, labels=None, log=False, z_sc
             showgrid=False,  
             zeroline=False,  
             tickfont=dict(size=14),  
-            titlefont=dict(size=14),  
+            titlefont=dict(size=14),
+            constrain='domain',
+            constraintoward='middle'
         ),
         yaxis2=dict(
             tickmode='array',
@@ -273,6 +545,8 @@ def plot_heatmap2(adata, genes, groupby1, groupby2, labels=None, log=False, z_sc
             showgrid=False,
             zeroline=False,
             tickfont=dict(size=14),
+            constrain='domain',
+            constraintoward='middle'
         ),
         yaxis3=dict(
             tickmode='array',
@@ -281,6 +555,8 @@ def plot_heatmap2(adata, genes, groupby1, groupby2, labels=None, log=False, z_sc
             showgrid=False,
             zeroline=False,
             tickfont=dict(size=14),
+            constrain='domain',
+            constraintoward='middle'
         ),
         annotations=legend_annotations,
         hovermode='closest',  

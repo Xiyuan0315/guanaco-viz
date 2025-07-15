@@ -11,6 +11,11 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
     if num_genes == 0 or num_labels == 0:
         raise PreventUpdate
 
+    # Filter data based on selected labels
+    if labels:
+        cell_indices = adata.obs[groupby].isin(labels)
+        adata = adata[cell_indices]
+    
     genes = list(reversed(genes))
     # Filter out genes that don't exist in the dataset
     valid_genes = [gene for gene in genes if gene in adata.var_names]
@@ -31,23 +36,41 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
         )
         return fig
     
-    adata_selected = adata[:, valid_genes]
-    gene_expression_matrix = adata_selected.X.toarray()
+    # For backed AnnData, we need to extract data directly without creating views
+    if hasattr(adata, 'isbacked') and adata.isbacked:
+        # Extract gene indices for valid genes
+        gene_indices = [adata.var_names.get_loc(gene) for gene in valid_genes]
+        # Extract expression data directly from the backed file
+        if hasattr(adata.X, 'toarray'):
+            # For sparse backed data
+            gene_expression_matrix = adata.X[:, gene_indices].toarray()
+        else:
+            # For dense backed data
+            gene_expression_matrix = adata.X[:, gene_indices]
+    else:
+        # Original code for non-backed AnnData
+        adata_selected = adata[:, valid_genes]
+        if hasattr(adata_selected.X, 'toarray'):
+            gene_expression_matrix = adata_selected.X.toarray()
+        else:
+            gene_expression_matrix = adata_selected.X
 
     if transformation == "log":
         gene_expression_matrix = np.log1p(gene_expression_matrix)
     elif transformation == "z_score":
         gene_expression_matrix = (gene_expression_matrix - gene_expression_matrix.mean(axis=0)) / gene_expression_matrix.std(axis=0)
 
-    df = pd.DataFrame(gene_expression_matrix, columns=valid_genes, index=adata_selected.obs_names)
+    df = pd.DataFrame(gene_expression_matrix, columns=valid_genes, index=adata.obs_names)
     df[groupby] = adata.obs[groupby].values
     heatmap_df = df.copy()
 
-    heatmap_df[groupby] = pd.Categorical(
-        heatmap_df[groupby],
-        categories=labels,
-        ordered=True
-    )
+    # Sort by groupby maintaining the order of labels if provided
+    if labels:
+        heatmap_df[groupby] = pd.Categorical(
+            heatmap_df[groupby],
+            categories=labels,
+            ordered=True
+        )
     sorted_heatmap_df = heatmap_df.sort_values(groupby)
 
     heatmap_gene_matrix = sorted_heatmap_df[valid_genes].values.T
@@ -150,20 +173,33 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
         showlegend=False,
         plot_bgcolor='white',
         paper_bgcolor='white',
-        xaxis=dict(range=[0, total_x_range]),
-        xaxis2=dict(range=[0, total_x_range], visible=False),
+        xaxis=dict(
+            range=[0, total_x_range],
+            constrain='domain',
+            constraintoward='center'
+        ),
+        xaxis2=dict(
+            range=[0, total_x_range], 
+            visible=False,
+            constrain='domain',
+            constraintoward='center'
+        ),
         yaxis=dict(
             tickmode='array',
             tickvals=y_position,
             ticktext=valid_genes,
-            tickfont=dict(size=14)
+            tickfont=dict(size=14),
+            constrain='domain',
+            constraintoward='middle'
         ),
         yaxis2=dict(
             tickmode='array',
             tickvals=[0],
             ticktext=[groupby],
             showgrid=False,
-            tickfont=dict(size=14, family='Arial Black', color='black')
+            tickfont=dict(size=14, family='Arial Black', color='black'),
+            constrain='domain',
+            constraintoward='middle'
         ),
         height=max(450, sum(total_height)),
         margin=dict(t=50, b=150, l=50, r=50),

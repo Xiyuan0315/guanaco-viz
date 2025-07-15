@@ -8,6 +8,11 @@ def plot_dot_matrix(adata, genes, groupby, selected_labels, aggregation='mean', 
     if not valid_genes:
         raise PreventUpdate
 
+    # Filter data based on selected labels
+    if selected_labels:
+        cell_indices = adata.obs[groupby].isin(selected_labels)
+        adata = adata[cell_indices]
+
     expression_data = adata.to_df()[valid_genes].copy()
     expression_data[groupby] = adata.obs[groupby].values
 
@@ -31,7 +36,13 @@ def plot_dot_matrix(adata, genes, groupby, selected_labels, aggregation='mean', 
     expression_binary = expression_data[valid_genes] > expression_threshold
     fraction_expressing = expression_binary.groupby(expression_data[groupby], observed=True).mean()
 
-    groups = list(reversed(selected_labels))
+    # Use actual groups present in the data after filtering
+    if selected_labels:
+        # Keep the order of selected_labels but only include those actually present
+        groups = [label for label in reversed(selected_labels) if label in aggregated_data.index]
+    else:
+        groups = list(reversed(aggregated_data.index))
+    
     vmin = vmin if vmin is not None else aggregated_data[valid_genes].min().min()
     vmax = vmax if vmax is not None else aggregated_data[valid_genes].max().max()
 

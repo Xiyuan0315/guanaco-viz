@@ -1,15 +1,11 @@
 import json
-import os
 from pathlib import Path
 import warnings
-from dash import dcc, html, Input, Output, exceptions, State
+from dash import dcc, html, Input, Output, exceptions, State, callback_context
 from dash.exceptions import PreventUpdate
-import dash
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
-import muon as mu
-import anndata as ad
 
 # Import visualization functions
 from guanaco.pages.single_cell.cellplotly.embedding import plot_categorical_embedding, plot_continuous_embedding
@@ -19,12 +15,14 @@ from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
 from guanaco.pages.single_cell.cellplotly.violin2 import plot_violin2
 from guanaco.pages.single_cell.cellplotly.stacked_bar import plot_stacked_bar
 from guanaco.pages.single_cell.cellplotly.dotmatrix import plot_dot_matrix
+from guanaco.pages.single_cell.cellplotly.pseudotime import plot_genes_in_pseudotime
 
 # Import sub-layouts
 from guanaco.pages.single_cell.mod021_heatmap import generate_heatmap_layout
 from guanaco.pages.single_cell.mod022_violin import generate_violin_layout
 from guanaco.pages.single_cell.mod023_dotplot import generate_dotplot_layout
 from guanaco.pages.single_cell.mod024_stacked_bar import generate_stacked_bar_layout
+from guanaco.pages.single_cell.mod025_pseudotime import generate_pseudotime_layout
 
 # Import configs
 from guanaco.config import scatter_config
@@ -92,7 +90,46 @@ def generate_scatter_gene_selection(init_gene_list, prefix):
     value = init_gene_list[0], placeholder="Search and select a gene...", style={'marginBottom': '15px'})
 
 
-def scatter_layout(adata, prefix):
+def scatter_layout(adata,prefix):
+
+
+
+    def create_control_components(adata):
+
+        obsm_list, _, default_embedding, default_columns = initialize_scatter_components(adata)
+        clustering_dropdown = dcc.Dropdown(
+            id=f'{prefix}-clustering-dropdown',
+            options=[{'label': key.replace("X_", "").upper(), 'value': key} for key in obsm_list],
+            value='X_umap' if 'X_umap' in obsm_list else default_embedding,
+            placeholder="Select Clustering Method",
+            style={'marginBottom': '15px','fontSize': '14px'},
+            clearable=False
+        
+        )
+
+        coordinates_dropdowns = html.Div([
+            html.Label("X-axis:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+            dcc.Dropdown(id=f'{prefix}-x-axis', options=[{'label': col, 'value': col} for col in default_columns], value=default_columns[0]),
+            html.Label("Y-axis:", style={'fontWeight': 'bold', 'marginTop': '15px', 'marginBottom': '5px'}),
+            dcc.Dropdown(id=f'{prefix}-y-axis', options=[{'label': col, 'value': col} for col in default_columns], value=default_columns[1])
+        ], style={'marginBottom': '15px','fontSize': '14px'})
+
+        return clustering_dropdown, coordinates_dropdowns
+
+    def generate_annotation_dropdown(anno_list):
+
+        """Initial annotation dropdown with limited options."""
+        return dcc.Dropdown(id=f'{prefix}-annotation-dropdown', 
+        options=[{'label': label, 'value': label} for label in anno_list],
+        placeholder="Search and select an annotation...", 
+        value = anno_list[len(anno_list)//2],
+        style={'marginBottom': '15px'})
+
+    def generate_scatter_gene_selection(init_gene_list):
+        """Initial gene selection dropdown with limited options."""
+        return dcc.Dropdown(id=f'{prefix}-scatter-gene-selection', options=[{'label': label, 'value': label} for label in init_gene_list], 
+        value = init_gene_list[0], placeholder="Search and select a gene...", style={'marginBottom': '15px'})
+
     scatter_transformation_selection = html.Div([
         dbc.RadioItems(
             id=f'{prefix}-scatter-log-or-zscore',
@@ -106,12 +143,13 @@ def scatter_layout(adata, prefix):
             style={'fontSize': '14px'} 
         )
     ])
-    
+
+
     scatter_order_selection = html.Div([
         dbc.RadioItems(
             id=f'{prefix}-plot-order',
             options=[
-                {'label': 'Max-1st', 'value': 'max'},
+                {'label': 'Max-1st', 'value': 'max'},  # None option with 'False' value
                 {'label': 'Min-1st', 'value': 'min'},
                 {'label': 'Original', 'value': 'original'},
                 {'label': 'Random', 'value': 'random'},
@@ -119,18 +157,20 @@ def scatter_layout(adata, prefix):
             value='max',
             inline=True,
             style={'fontSize': '14px'}
+
         )
     ])
-    
+
     colorscales = px.colors.named_colorscales()
+    # Dropdown for color map selection
     color_map_dropdown = dcc.Dropdown(
         id=f"{prefix}-scatter-color-map-dropdown",
         options=[{"label": scale, "value": scale} for scale in colorscales],
-        value="viridis",
+        value="viridis",  # Default colorscale
         style={"marginBottom": "10px"},
         clearable = False
     )
-    
+
     color_map_discrete_dropdown = dcc.Dropdown(
         id=f"{prefix}-scatter-discrete-color-map-dropdown",
         options=[{"label": name, "value": name} for name in palette_names],
@@ -139,28 +179,32 @@ def scatter_layout(adata, prefix):
         style={"marginBottom": "10px"},
         clearable=True,
         className="custom-dropdown",
+
     )
-    
+
+
+    # Slider for marker size
     marker_size_slider = dcc.Slider(
         id=f'{prefix}-marker-size-slider',
         min=1,
         max=10,
-        value=5,
+        value=5,  # Default marker size
         marks = None,
         tooltip={"placement": "bottom", "always_visible": True},
         className="dbc-slider"
     )
-    
+
+    # Slider for opacity
     opacity_slider = dcc.Slider(
         id=f"{prefix}-opacity-slider",
         min=0.1,
         max=1.0,
-        value=1,
+        value=1,  # Default opacity
         marks = None,
         tooltip={"placement": "bottom", "always_visible": True},
         className="dbc-slider"
     )
-    
+    # toggle for scatter plot legend
     scatter_legend_toggle = dbc.RadioItems(
         id=f'{prefix}-scatter-legend-toggle',
         options=[
@@ -171,7 +215,7 @@ def scatter_layout(adata, prefix):
         inline=True,
         style={'fontSize': '14px'} 
     )
-    
+    # Toggle for axis show
     axis_toggle = dbc.RadioItems(
         id=f'{prefix}-axis-toggle',
         options=[
@@ -182,7 +226,7 @@ def scatter_layout(adata, prefix):
         inline=True,
         style={'fontSize': '14px'}
     )
-    
+
     graphic_control = html.Div(
         id=f"{prefix}-controls-container",
         children=[
@@ -240,22 +284,16 @@ def scatter_layout(adata, prefix):
         ],
         style={'display': 'none'}  # hidden by default
     )
-    
-    unique_counts = adata.obs.nunique()
-    unique_counts = unique_counts[unique_counts<100]
-    unique_counts_sorted = unique_counts.sort_values()
-    anno_list = unique_counts_sorted.index.tolist()
-    
-    clustering_dropdown, coordinates_dropdowns = create_control_components(adata, prefix)
+
+    # Get all obs columns (both discrete and continuous)
+    anno_list = adata.obs.columns.tolist()
+
+    clustering_dropdown, coordinates_dropdowns = create_control_components(adata)
     layout = html.Div([
         # Add Store component to hold selected cells data
         dcc.Store(id=f'{prefix}-selected-cells-store'),
-        # Add a div to show selection status
-        html.Div(id=f'{prefix}-selection-status', style={'textAlign': 'center', 'marginBottom': '10px'}),
         
-        # Wrapper div to stabilize layout
-        html.Div([
-            dbc.Row([
+        dbc.Row([
             # Left column: Controls
             dbc.Col(
             html.Div(
@@ -283,75 +321,82 @@ def scatter_layout(adata, prefix):
                         style={'marginBottom': '15px'}
                     ),
                     html.Button("More controls", id=f"{prefix}-toggle-button", n_clicks=0, style={'marginBottom': '10px','border':'1px solid','borderRadius': '5px'}),
+
                     graphic_control,
                 ],
             ),
             xs=12, sm=12, md=4, lg=4, xl=2, 
             style={"borderRight": "1px solid #ddd", "padding": "10px"}
         ),
-        
-        dbc.Col(
-            html.Div(
-                [
-                    html.Label("Select Annotation:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-                    generate_annotation_dropdown(anno_list=anno_list, prefix=prefix),
-                    # Graph without loading component
-                    dcc.Graph(
-                        id=f'{prefix}-annotation-scatter', 
-                        config=dict(scatter_config, **{'modeBarButtonsToAdd': ['select2d', 'lasso2d']}),
-                        style={"height": "450px", "minHeight": "450px", "display": "block"}  # Match CSS min-height
-                    ),
-                ],
-                className="dbc",
-                style={'marginBottom': '20px'}
-            ),
-            xs=12, sm=12, md=4, lg=4, xl=5
-        ),
-        dbc.Col(
-            html.Div(
-                [
-                    html.Label("Search Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-                    generate_scatter_gene_selection(init_gene_list=adata.var_names.to_list()[:10], prefix=prefix),
-                    dcc.Graph(
-                        id=f'{prefix}-gene-scatter', 
-                        config=dict(scatter_config, **{'modeBarButtonsToAdd': ['select2d', 'lasso2d']}),
-                        style={"height": "450px", "minHeight": "450px", "display": "block"}  # Match CSS min-height
-                    ),
-                ],
-                className="dbc",
-                style={'marginBottom': '20px','marginRight': '10px'}
-            ),
-            xs=12, sm=12, md=4, lg=4, xl=5
-        ),
-        ]),
-        ], style={'position': 'relative'}),  # End wrapper div
-        
-        # Add a new row for the button - completely outside the scatter plot area
-        dbc.Row([
-            dbc.Col(
-                # Empty column to align with controls
-                width={"size": 2, "offset": 0}
-            ),
-            dbc.Col(
+    # First annotation sencond gene scatter plot
+
+    dbc.Col(
+        html.Div(
+            [
+                html.Label("Select Annotation:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                generate_annotation_dropdown(anno_list=anno_list),
+                dcc.Loading(
+                    id=f"{prefix}-loading-annotaion-scatter",
+                    type="circle",
+                    children=dcc.Graph(id=f'{prefix}-annotation-scatter', config=scatter_config),
+                    style={"height": "100%"},
+                ),
+                # Add button below the scatter plot
                 html.Div([
-                    dbc.Button(
-                        "Update Other Plots with Selected Cells",
-                        id=f"{prefix}-update-plots-button",
-                        color="primary",
-                        n_clicks=0,
-                        size="md",
-                        style={'width': '50%'}
-                    ),
-                    html.P(
-                        "Select cells in the annotation scatter plot above, then click this button to filter all other plots",
-                        style={'textAlign': 'center', 'marginTop': '10px', 'fontSize': '14px', 'color': '#666'}
-                    )
-                ], style={'marginTop': '20px', 'marginBottom': '20px'}),
-                width={"size": 10}
-            )
+                    dbc.Row([
+                        dbc.Col([
+                            dbc.Button(
+                                "Update Other Plots with Selected Cells",
+                                id=f"{prefix}-update-plots-button",
+                                color="primary",
+                                n_clicks=0,
+                                style={'width': '100%'}
+                            ),
+                        ], width=8),
+                        dbc.Col([
+                            dbc.InputGroup([
+                                dbc.DropdownMenu(
+                                    [
+                                        dbc.DropdownMenuItem("Cell IDs (.txt)", id=f"{prefix}-download-cellids"),
+                                        dbc.DropdownMenuItem("Subset AnnData (.h5ad)", id=f"{prefix}-download-adata"),
+                                    ],
+                                    label="Download",
+                                    color="secondary",
+                                    id=f"{prefix}-download-menu",
+                                    disabled=True
+                                ),
+                                dcc.Download(id=f"{prefix}-download-cells-data")
+                            ], style={'width': '100%'})
+                        ], width=4)
+                    ], style={'marginTop': '10px'}),
+                    html.Div(id=f"{prefix}-selection-status", style={'textAlign': 'center', 'marginTop': '5px'})
+                ]),
+            ],
+            className="dbc",
+            style={'marginBottom': '20px'}
+        ),
+        xs=12, sm=12, md=4, lg=4, xl=5 # Full width on small screens, half on larger screens
+    ),
+    dbc.Col(
+        html.Div(
+            [
+                html.Label("Search Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                generate_scatter_gene_selection(init_gene_list=adata.var_names.to_list()[:10]),
+                dcc.Loading(
+                    id=f"{prefix}-loading-gene-scatter",
+                    type="circle",
+                    children=dcc.Graph(id=f'{prefix}-gene-scatter', config=scatter_config),
+                    style={"height": "100%"},
+                ),
+            ],
+            className="dbc",
+            style={'marginBottom': '20px','marginRight': '10px'}
+        ),
+        xs=12, sm=12, md=4, lg=4, xl=5  # Full width on small screens, half on larger screens
+    ),
         ])
     ])
-    
+
     return layout
 
 
@@ -420,6 +465,7 @@ def generate_left_control(default_gene_markers, label_list, prefix):
 
 
 def generate_single_cell_tabs(adata, default_gene_markers, discrete_label_list, prefix):
+
     tabs = dcc.Tabs([
         dcc.Tab(label='Heatmap', value='heatmap-tab', children=[
             html.Div(generate_heatmap_layout(adata, prefix))
@@ -433,20 +479,152 @@ def generate_single_cell_tabs(adata, default_gene_markers, discrete_label_list, 
         dcc.Tab(label='Stacked Bar', value='stacked-bar-tab', children=[
             html.Div(generate_stacked_bar_layout(discrete_label_list,prefix))
         ]),
+        dcc.Tab(label='Pseudotime Plot', value='pseudotime-tab', children=[
+            html.Div(generate_pseudotime_layout(prefix))
+        ]),
     ], id=f'{prefix}-single-cell-tabs', value='heatmap-tab', className='custom-tabs')
-    
-    return html.Div([
-        # Add a div to show cell filtering status
-        html.Div(id=f'{prefix}-filter-status', style={'textAlign': 'center', 'marginBottom': '10px'}),
-        dbc.Row([
-            dbc.Col(
-                generate_left_control(default_gene_markers, discrete_label_list, prefix),
-                xs=12, sm=12, md=4, lg=4, xl=2
-            ),
-            dbc.Col(tabs, xs=12, sm=12, md=8, lg=8, xl=10)
-        ], style={'marginBottom': '50px'})
-    ])
 
+    return dbc.Row([
+        dbc.Col(
+            generate_left_control(default_gene_markers, discrete_label_list, prefix),
+            xs=12, sm=12, md=4, lg=4, xl=2
+        ),
+        dbc.Col(tabs, xs=12, sm=12, md=8, lg=8, xl=10)
+    ], style={'marginBottom': '50px'})
+
+# ============= Helper Functions =============
+
+def is_continuous_annotation(adata, annotation, threshold=50):
+    """Check if an annotation is continuous based on unique value count and data type."""
+    if annotation not in adata.obs.columns:
+        return False
+    
+    # Check data type
+    dtype = adata.obs[annotation].dtype
+    if dtype in ['float32', 'float64', 'int32', 'int64']:
+        # Numeric type - check unique values
+        n_unique = adata.obs[annotation].nunique()
+        return n_unique >= threshold
+    return False
+
+def plot_continuous_annotation(
+    adata, embedding_key, annotation, x_axis=None, y_axis=None,
+    transformation=None, order=None, color_map='Viridis',
+    marker_size=5, opacity=1, axis_show=True
+):
+    """
+    Plot a continuous annotation (from obs) on a 2D embedding.
+    Modified to work with obs columns instead of gene expression.
+    """
+    import numpy as np
+    import pandas as pd
+    
+    embedding_prefixes = {
+        'X_umap': 'UMAP', 'X_pca': 'PCA', 'X_tsne': 't-SNE',
+        'X_diffmap': 'DiffMap', 'X_phate': 'PHATE', 'X_draw_graph_fa': 'FA'
+    }
+    embedding_prefix = embedding_prefixes.get(embedding_key, embedding_key.upper())
+    embedding_data = adata.obsm[embedding_key]
+
+    # Set column names for the embedding
+    num_dimensions = embedding_data.shape[1]
+    embedding_columns = [f'{embedding_prefix}{i + 1}' for i in range(num_dimensions)]
+    embedding_df = pd.DataFrame(embedding_data, columns=embedding_columns)
+
+    # Default x and y axis
+    x_axis = x_axis or embedding_columns[0]
+    y_axis = y_axis or (embedding_columns[1] if len(embedding_columns) > 1 else embedding_columns[0])
+
+    # Extract annotation values (from obs instead of expression)
+    annotation_values = adata.obs[annotation].values
+    
+    # Only apply transformations if explicitly requested and data is numeric
+    # For annotation data, we usually want to see the raw values
+    if transformation and annotation_values.dtype in ['float32', 'float64', 'int32', 'int64']:
+        if transformation == 'log':
+            # Handle negative values for log transformation
+            min_val = annotation_values.min()
+            if min_val <= 0:
+                annotation_values = annotation_values - min_val + 1
+            annotation_values = np.log1p(annotation_values)
+        elif transformation == 'z_score':
+            annotation_values = (annotation_values - np.mean(annotation_values)) / np.std(annotation_values)
+
+    embedding_df[annotation] = annotation_values
+    # Add cell indices for selection tracking
+    embedding_df['_cell_idx'] = np.arange(len(embedding_df))
+
+    # Sort order
+    if order == 'max':
+        embedding_df_sorted = embedding_df.sort_values(by=annotation)
+    elif order == 'min':
+        embedding_df_sorted = embedding_df.sort_values(by=annotation, ascending=False)
+    elif order == 'random':
+        embedding_df_sorted = embedding_df.sample(frac=1, random_state=315).reset_index(drop=True)
+    else:
+        embedding_df_sorted = embedding_df
+
+    # Create scatter plot
+    fig = go.Figure()
+    fig.add_trace(go.Scattergl(
+        x=embedding_df_sorted[x_axis],
+        y=embedding_df_sorted[y_axis],
+        mode='markers',
+        marker=dict(
+            color=embedding_df_sorted[annotation],
+            colorscale=color_map,
+            cmin=embedding_df_sorted[annotation].min(),
+            cmax=embedding_df_sorted[annotation].max(),
+            size=marker_size,
+            opacity=opacity,
+            colorbar=dict(
+                title=f"{annotation}<br>{transformation if transformation else ''}",
+                len=0.8
+            )
+        ),
+        customdata=np.stack([embedding_df_sorted[annotation], embedding_df_sorted['_cell_idx']], axis=-1),  # Add customdata with cell index
+        hovertemplate=f'{annotation}: %{{customdata[0]:.4f}}<br><extra></extra>',
+        selectedpoints=None,  # Enable selection
+        selected=dict(marker=dict(opacity=1)),  # Keep selected points fully visible
+        unselected=dict(marker=dict(opacity=0.2))  # Dim unselected points
+    ))
+
+    fig.update_layout(
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        title=dict(
+            text=f'<b>{annotation}</b>',
+            x=0.5,
+            y=0.95,
+            xanchor='center',
+            yanchor='bottom'
+        ),
+        xaxis=dict(
+            title=x_axis,
+            showgrid=False,
+            zeroline=False,
+            scaleanchor='y',
+            constrain='domain'
+        ),
+        yaxis=dict(
+            title=y_axis,
+            showgrid=False,
+            zeroline=False,
+            constrain='domain'
+        ),
+        margin=dict(t=60, r=10, l=10, b=40)
+    )
+
+    fig.update_xaxes(
+        showline=True, linewidth=2, linecolor='black',
+        tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
+    )
+    fig.update_yaxes(
+        showline=True, linewidth=2, linecolor='black',
+        tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
+    )
+
+    return fig
 
 # ============= Main Callback Functions =============
 
@@ -530,29 +708,55 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-scatter-legend-toggle', 'value'),
          Input(f'{prefix}-axis-toggle', 'value'),
          Input(f'{prefix}-scatter-discrete-color-map-dropdown', 'value'),
+         Input(f'{prefix}-scatter-log-or-zscore', 'value'),  # Add for continuous transformations
+         Input(f'{prefix}-plot-order', 'value'),  # Add for continuous ordering
+         Input(f'{prefix}-scatter-color-map-dropdown', 'value'),  # Add for continuous color maps
          ]
     )
-    def update_annotation_scatter(clustering_method, x_axis, y_axis,annotation, gene,marker_size, opacity, legend_show,axis_show,color_map):
+    def update_annotation_scatter(clustering_method, x_axis, y_axis, annotation, gene, 
+                                marker_size, opacity, legend_show, axis_show, 
+                                discrete_color_map, transformation, order, continuous_color_map):
         if not annotation:
             raise exceptions.PreventUpdate
-        if color_map is None:
-            color_map = color_config
-        else:
-            color_map = palette_json["color_palettes"][color_map]
         
-        fig = plot_categorical_embedding(
-            adata=adata,
-            gene = gene,
-            embedding_key=clustering_method,
-            color=annotation,
-            x_axis=x_axis,
-            y_axis=y_axis,
-            color_map=color_map,
-            marker_size=marker_size,
-            opacity=opacity,
-            legend_show=legend_show,
-            axis_show=axis_show,
-        )
+        # Check if annotation is continuous or discrete
+        if is_continuous_annotation(adata, annotation):
+            # Use continuous plotting
+            color_map = continuous_color_map or 'Viridis'
+            
+            fig = plot_continuous_annotation(
+                adata=adata,
+                embedding_key=clustering_method,
+                annotation=annotation,
+                x_axis=x_axis,
+                y_axis=y_axis,
+                transformation=None,  # Disable transformation for annotation data
+                order=order,
+                color_map=color_map,
+                marker_size=marker_size,
+                opacity=opacity,
+                axis_show=axis_show,
+            )
+        else:
+            # Use categorical plotting
+            if discrete_color_map is None:
+                color_map = color_config
+            else:
+                color_map = palette_json["color_palettes"][discrete_color_map]
+            
+            fig = plot_categorical_embedding(
+                adata=adata,
+                gene=gene,
+                embedding_key=clustering_method,
+                color=annotation,
+                x_axis=x_axis,
+                y_axis=y_axis,
+                color_map=color_map,
+                marker_size=marker_size,
+                opacity=opacity,
+                legend_show=legend_show,
+                axis_show=axis_show,
+            )
         
         # Enable selection mode and set height to match CSS
         fig.update_layout(
@@ -598,20 +802,26 @@ def single_cell_callbacks(app, adata, prefix):
             axis_show=axis_show,
         )
         
-        # Set height to match CSS
-        fig.update_layout(
-            height=450,
-            margin=dict(t=20, b=20, l=20, r=20)
-        )
-        
         # Apply zoom from annotation scatter plot
         if annotation_relayout and ('xaxis.range[0]' in annotation_relayout and 'yaxis.range[0]' in annotation_relayout):
             x_range = [annotation_relayout['xaxis.range[0]'], annotation_relayout['xaxis.range[1]']]
             y_range = [annotation_relayout['yaxis.range[0]'], annotation_relayout['yaxis.range[1]']]
             fig.update_layout(
-                xaxis=dict(range=x_range), 
-                yaxis=dict(range=y_range))
-        
+                xaxis=dict(
+                    range=x_range,
+                    scaleanchor='y',
+                    constrain='domain'
+                ), 
+                yaxis=dict(
+                    range=y_range,
+                    constrain='domain'
+                ),
+                height=450
+            )
+        else:
+            # Ensure consistent height even without zoom
+            fig.update_layout(height=450)
+            
         return fig
     
     # ===== Cell Selection Callback =====
@@ -633,22 +843,37 @@ def single_cell_callbacks(app, adata, prefix):
         
         # Get the actual cell indices
         selected_indices = []
-        for point in selected_points:
-            # The curveNumber tells us which trace (category) the point belongs to
-            curve_number = point.get('curveNumber', 0)
-            point_number = point.get('pointNumber', 0)
-            
-            # Get all unique categories in order
-            unique_categories = sorted(adata.obs[current_annotation].unique())
-            selected_category = unique_categories[curve_number]
-            
-            # Get all cells in this category
-            category_mask = adata.obs[current_annotation] == selected_category
-            category_indices = adata.obs.index[category_mask].tolist()
-            
-            # The point_number is the index within this category
-            if point_number < len(category_indices):
-                selected_indices.append(category_indices[point_number])
+        
+        # Check if this is continuous or categorical data
+        if is_continuous_annotation(adata, current_annotation):
+            # For continuous data, we have a single trace with customdata containing cell indices
+            for point in selected_points:
+                if 'customdata' in point and len(point['customdata']) > 1:
+                    # The second element in customdata is the cell index
+                    cell_idx = int(point['customdata'][1])
+                    selected_indices.append(adata.obs.index[cell_idx])
+                else:
+                    # Fallback to point number if customdata is not available
+                    point_number = point.get('pointNumber', 0)
+                    selected_indices.append(adata.obs.index[point_number])
+        else:
+            # For categorical data, use the original logic
+            for point in selected_points:
+                # The curveNumber tells us which trace (category) the point belongs to
+                curve_number = point.get('curveNumber', 0)
+                point_number = point.get('pointNumber', 0)
+                
+                # Get all unique categories in order
+                unique_categories = sorted(adata.obs[current_annotation].unique())
+                selected_category = unique_categories[curve_number]
+                
+                # Get all cells in this category
+                category_mask = adata.obs[current_annotation] == selected_category
+                category_indices = adata.obs.index[category_mask].tolist()
+                
+                # The point_number is the index within this category
+                if point_number < len(category_indices):
+                    selected_indices.append(category_indices[point_number])
         
         if selected_indices:
             n_selected = len(selected_indices)
@@ -662,6 +887,69 @@ def single_cell_callbacks(app, adata, prefix):
             return selected_indices, status_msg
         else:
             return None, ""
+    
+    # Enable/disable download menu based on selected cells
+    @app.callback(
+        Output(f'{prefix}-download-menu', 'disabled'),
+        [Input(f'{prefix}-selected-cells-store', 'data')]
+    )
+    def toggle_download_menu(selected_cells):
+        """Enable download menu when cells are selected"""
+        return not bool(selected_cells)
+    
+    # Handle cell data download
+    @app.callback(
+        Output(f'{prefix}-download-cells-data', 'data'),
+        [Input(f'{prefix}-download-cellids', 'n_clicks'),
+         Input(f'{prefix}-download-adata', 'n_clicks')],
+        [State(f'{prefix}-selected-cells-store', 'data')],
+        prevent_initial_call=True
+    )
+    def download_selected_cells(n_clicks_txt, n_clicks_h5ad, selected_cells):
+        """Download selected cell IDs or subset AnnData"""
+        ctx = callback_context
+        if not ctx.triggered or not selected_cells:
+            raise PreventUpdate
+        
+        # Determine which button was clicked
+        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        
+        if f'{prefix}-download-cellids' in button_id:
+            # Download cell IDs as text file
+            content = "\n".join(selected_cells)
+            return dict(
+                content=content,
+                filename="selected_cells.txt"
+            )
+        elif f'{prefix}-download-adata' in button_id:
+            # Download subset AnnData as h5ad
+            import tempfile
+            import os
+            
+            # Create subset AnnData
+            subset_adata = adata[selected_cells].copy()
+            
+            # Save to temporary file
+            with tempfile.NamedTemporaryFile(suffix='.h5ad', delete=False) as tmp:
+                subset_adata.write_h5ad(tmp.name)
+                tmp_path = tmp.name
+            
+            # Read the file content
+            with open(tmp_path, 'rb') as f:
+                content = f.read()
+            
+            # Clean up temp file
+            os.unlink(tmp_path)
+            
+            # Return as downloadable h5ad file
+            import base64
+            return dict(
+                content=base64.b64encode(content).decode(),
+                filename=f"subset_{len(selected_cells)}_cells.h5ad",
+                base64=True
+            )
+        
+        raise PreventUpdate
     
     # ===== Other Plots Callbacks =====
     
@@ -839,22 +1127,45 @@ def single_cell_callbacks(app, adata, prefix):
     @app.callback(
         Output(f'{prefix}-p-value-method', 'options'),
         Output(f'{prefix}-p-value-method', 'value'),
-        Input(f'{prefix}-p-value-selection', 'value')
+        Input(f'{prefix}-p-value-selection', 'value'),
+        Input(f'{prefix}-multi-class-selection', 'value'),
+        Input(f'{prefix}-binary-selection', 'value')
     )
-    def update_p_value_method(selection):
-        if selection == 'multi':
-            options = [
-                {'label': 'Kruskal-Wallis', 'value': 'kw-test'},
-                {'label': 'ANOVA', 'value': 'anova'},
-                {'label': 'Two-way ANOVA', 'value': 'two-way-anova'}
-            ]
-            value = 'kw-test'
-        elif selection == 'binary':
-            options = [
-                {'label': 'Mann-Whitney U Test', 'value': 'mwu-test'},
-                {'label': 'T-test', 'value': 'ttest'}
-            ]
-            value = 'mwu-test'
+    def update_p_value_method(comparison_mode, groupby_col, hue_col):
+        if comparison_mode == 'within':
+            # Within group: compare hues within each group
+            n_hues = len(adata.obs[hue_col].unique()) if hue_col else 0
+            if n_hues == 2:
+                options = [
+                    {'label': 'Mann-Whitney U Test', 'value': 'mwu-test'},
+                    {'label': 'T-test', 'value': 'ttest'},
+                    {'label': 'Two-way ANOVA', 'value': 'two-way-anova'}
+                ]
+                value = 'mwu-test'
+            else:
+                options = [
+                    {'label': 'Kruskal-Wallis', 'value': 'kw-test'},
+                    {'label': 'ANOVA', 'value': 'anova'},
+                    {'label': 'Two-way ANOVA', 'value': 'two-way-anova'}
+                ]
+                value = 'kw-test'
+        elif comparison_mode == 'between':
+            # Between group: compare groups within each hue
+            n_groups = len(adata.obs[groupby_col].unique()) if groupby_col else 0
+            if n_groups == 2:
+                options = [
+                    {'label': 'Mann-Whitney U Test', 'value': 'mwu-test'},
+                    {'label': 'T-test', 'value': 'ttest'},
+                    {'label': 'Two-way ANOVA', 'value': 'two-way-anova'}
+                ]
+                value = 'mwu-test'
+            else:
+                options = [
+                    {'label': 'Kruskal-Wallis', 'value': 'kw-test'},
+                    {'label': 'ANOVA', 'value': 'anova'},
+                    {'label': 'Two-way ANOVA', 'value': 'two-way-anova'}
+                ]
+                value = 'kw-test'
         else:
             options = [{'label': 'None', 'value': 'none'}]
             value = 'none'
@@ -876,15 +1187,24 @@ def single_cell_callbacks(app, adata, prefix):
         [Input(f'{prefix}-violin2-gene-selection', 'value'),
          Input(f'{prefix}-multi-class-selection', 'value'),
          Input(f'{prefix}-binary-selection', 'value'),
+         Input(f'{prefix}-p-value-selection', 'value'),
          Input(f'{prefix}-p-value-method', 'value'),
          Input(f'{prefix}-show-box2', 'value'),
-        Input(f'{prefix}-show-scatter2', 'value') ,
+         Input(f'{prefix}-show-scatter2', 'value'),
          Input(f'{prefix}-violin2-log-or-zscore', 'value'),
          Input(f'{prefix}-violin2-group-selection', 'value')]
     )
-    def update_violin2(violin_gene_selection, multi_annotation, binary_annotation, p_value_method, 
-                       show_box2, show_points, transformation, labels):
-        p_value = None if p_value_method == 'none' else p_value_method
+    def update_violin2(violin_gene_selection, multi_annotation, binary_annotation, 
+                       comparison_mode, p_value_method, show_box2, show_points, 
+                       transformation, labels):
+        # Determine comparison mode
+        if comparison_mode == 'None':
+            p_value = None
+            comp_mode = 'within'  # default
+        else:
+            p_value = None if p_value_method == 'none' else p_value_method
+            comp_mode = comparison_mode
+            
         return plot_violin2(
             adata,
             key=violin_gene_selection,
@@ -894,7 +1214,8 @@ def single_cell_callbacks(app, adata, prefix):
             show_box='show' in show_box2 if show_box2 else False,
             show_points='show' in show_points if show_points else False,
             p_value=p_value,
-            labels=labels
+            labels=labels,
+            comparison_mode=comp_mode
         )
     
     @app.callback(
@@ -938,74 +1259,25 @@ def single_cell_callbacks(app, adata, prefix):
         discrete_columns = unique_counts[unique_counts < 100].index.tolist()
         
         if len(discrete_columns) < 2:
-            # For single metadata, create a single stacked bar showing composition
-            single_meta = discrete_columns[0]
-            
-            # Get counts for each category
-            if selected_cells:
-                filtered_adata = adata[selected_cells]
-            else:
-                filtered_adata = adata
-                
-            value_counts = filtered_adata.obs[single_meta].value_counts()
-            
-            # Create color mapping
-            if discrete_color_map:
-                discrete_palette = palette_json["color_palettes"][discrete_color_map]
-                colors = [discrete_palette[i % len(discrete_palette)] for i in range(len(value_counts))]
-            else:
-                from guanaco.data_loader import color_config
-                colors = [color_config[i % len(color_config)] for i in range(len(value_counts))]
-            
-            if norm == 'prop':
-                # Convert to proportions
-                values = (value_counts / value_counts.sum() * 100).values
-                y_label = 'Percentage (%)'
-                text_template = '%{y:.1f}%'
-            else:
-                values = value_counts.values
-                y_label = 'Cell Count'
-                text_template = '%{y}'
-            
-            # Create stacked bar chart with one bar
+            # Create an empty figure with a message
             fig = go.Figure()
-            
-            y_position = 0
-            for i, (category, value) in enumerate(zip(value_counts.index, values)):
-                fig.add_trace(go.Bar(
-                    x=['All Cells'],
-                    y=[value],
-                    base=y_position,
-                    name=str(category),
-                    marker_color=colors[i],
-                    hovertemplate=f'{category}<br>Count: {value_counts.iloc[i]}<br>%{{y:.1f}}%<extra></extra>' if norm == 'prop' else f'{category}<br>Count: %{{y}}<extra></extra>'
-                ))
-                y_position += value
-            
+            fig.add_annotation(
+                text="Stacked bar plot requires at least 2 metadata columns.<br>Current dataset has only 1 metadata column.",
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=14),
+                xanchor="center",
+                yanchor="middle"
+            )
             fig.update_layout(
-                title=f'Composition by {single_meta}',
-                barmode='stack',
-                showlegend=True,
                 plot_bgcolor='white',
                 paper_bgcolor='white',
-                xaxis=dict(
-                    title='',
-                    showgrid=False,
-                    showline=True,
-                    linewidth=2,
-                    linecolor='black'
-                ),
-                yaxis=dict(
-                    title=y_label,
-                    showgrid=False,
-                    showline=True,
-                    linewidth=2,
-                    linecolor='black'
-                ),
-                bargap=0.5,
-                height=400
+                xaxis=dict(visible=False),
+                yaxis=dict(visible=False)
             )
-            
             return fig
         
         if x_meta == y_meta or y_meta == 'none':
@@ -1051,6 +1323,144 @@ def single_cell_callbacks(app, adata, prefix):
             }
         
         return plot_stacked_bar(x_meta, y_meta, norm, filtered_adata, color_map=fixed_color_map)
+    
+    # Pseudotime plot callback
+    @app.callback(
+        Output(f'{prefix}-pseudotime-plot', 'figure'),
+        [Input(f'{prefix}-single-cell-tabs', 'value'),
+         Input(f'{prefix}-single-cell-genes-selection', 'value'),
+         Input(f'{prefix}-single-cell-annotation-dropdown', 'value'),
+         Input(f'{prefix}-single-cell-label-selection', 'value'),
+         Input(f'{prefix}-pseudotime-min-expr-slider', 'value'),
+         Input(f'{prefix}-pseudotime-transformation', 'value'),
+         Input(f'{prefix}-pseudotime-key-dropdown', 'value'),
+         Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
+         Input(f'{prefix}-selected-cells-store', 'data')]
+    )
+    def update_pseudotime_plot(selected_tab, selected_genes, selected_annotation, selected_labels,
+                               min_expr, transformation, pseudotime_key,
+                               discrete_color_map, selected_cells):
+        # Only process when pseudotime tab is active
+        if selected_tab != 'pseudotime-tab':
+            return go.Figure()
+        
+        if not selected_genes:
+            # Return empty figure if no genes selected
+            fig = go.Figure()
+            fig.add_annotation(
+                text="<b>Please select genes to plot</b><br><br>Use the 'Select Variables' dropdown on the left to choose genes",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=16),
+                align="center"
+            )
+            fig.update_layout(
+                plot_bgcolor='#f8f9fa',
+                paper_bgcolor='white',
+                height=400,
+                margin=dict(t=50, b=50, l=50, r=50)
+            )
+            return fig
+        
+        # Filter data
+        filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
+        
+        # Get color map
+        if discrete_color_map:
+            discrete_palette = palette_json["color_palettes"][discrete_color_map]
+            all_categories = sorted(filtered_adata.obs[selected_annotation].unique())
+            color_map = {
+                cat: discrete_palette[i % len(discrete_palette)] 
+                for i, cat in enumerate(all_categories)
+            }
+        else:
+            all_categories = sorted(filtered_adata.obs[selected_annotation].unique())
+            color_map = {
+                cat: color_config[i % len(color_config)] 
+                for i, cat in enumerate(all_categories)
+            }
+        
+        # Use default pseudotime key if not specified
+        if not pseudotime_key:
+            # Try to find a pseudotime column
+            numeric_cols = []
+            for col in filtered_adata.obs.columns:
+                if filtered_adata.obs[col].dtype in ['float32', 'float64', 'int32', 'int64']:
+                    if filtered_adata.obs[col].nunique() > 50:
+                        numeric_cols.append(col)
+            
+            # Prioritize columns with 'pseudotime' in the name
+            pseudotime_cols = [col for col in numeric_cols if 'pseudotime' in col.lower() or 'dpt' in col.lower()]
+            
+            if pseudotime_cols:
+                pseudotime_key = pseudotime_cols[0]
+            elif numeric_cols:
+                pseudotime_key = numeric_cols[0]
+            else:
+                # No suitable pseudotime column found
+                fig = go.Figure()
+                fig.add_annotation(
+                    text="<b>No pseudotime column found</b><br><br>Please ensure your data has a numeric column with pseudotime values",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5,
+                    showarrow=False,
+                    font=dict(size=16),
+                    align="center"
+                )
+                fig.update_layout(
+                    plot_bgcolor='#f8f9fa',
+                    paper_bgcolor='white',
+                    height=400,
+                    margin=dict(t=50, b=50, l=50, r=50)
+                )
+                return fig
+        
+        return plot_genes_in_pseudotime(
+            filtered_adata,
+            selected_genes,
+            pseudotime_key=pseudotime_key,
+            groupby=selected_annotation,
+            min_expr=min_expr,
+            transformation=transformation,
+            color_map=color_map
+        )
+    
+    # Callback to populate pseudotime key dropdown
+    @app.callback(
+        [Output(f'{prefix}-pseudotime-key-dropdown', 'options'),
+         Output(f'{prefix}-pseudotime-key-dropdown', 'value')],
+        Input(f'{prefix}-single-cell-tabs', 'value')
+    )
+    def update_pseudotime_key_options(active_tab):
+        if active_tab == 'pseudotime-tab':
+            # Find all numeric columns that could be pseudotime
+            numeric_cols = []
+            for col in adata.obs.columns:
+                if adata.obs[col].dtype in ['float32', 'float64', 'int32', 'int64']:
+                    # Check if it could be pseudotime (continuous, reasonable range)
+                    if adata.obs[col].nunique() > 50:
+                        numeric_cols.append(col)
+            
+            # Prioritize columns with 'pseudotime' in the name
+            pseudotime_cols = [col for col in numeric_cols if 'pseudotime' in col.lower() or 'dpt' in col.lower()]
+            other_cols = [col for col in numeric_cols if col not in pseudotime_cols]
+            
+            options = []
+            all_cols = pseudotime_cols + other_cols
+            for col in all_cols:
+                options.append({'label': col, 'value': col})
+            
+            # If no pseudotime columns found, return empty with message
+            if not options:
+                options = [{'label': 'No pseudotime columns found', 'value': None}]
+                return options, None
+            
+            # Set default value to first pseudotime column or first numeric column
+            default_value = all_cols[0] if all_cols else None
+            
+            return options, default_value
+        return [], None
     
     # Add callback to update filter status
     @app.callback(

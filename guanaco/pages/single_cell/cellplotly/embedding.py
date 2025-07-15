@@ -29,7 +29,10 @@ def plot_continuous_embedding(
     y_axis = y_axis or (embedding_columns[1] if len(embedding_columns) > 1 else embedding_columns[0])
 
     # Extract gene expression and apply transformations
-    gene_expression = adata[:, color].X.toarray().flatten()
+    if hasattr(adata[:, color].X, 'toarray'):
+        gene_expression = adata[:, color].X.toarray().flatten()
+    else:
+        gene_expression = adata[:, color].X.flatten()
     if transformation == 'log':
         gene_expression = np.log1p(gene_expression)
     elif transformation == 'z_score':
@@ -79,8 +82,9 @@ def plot_continuous_embedding(
         title=dict(
             text=f'<b>{color}</b>',
             x=0.5,
-            y=0.9,
-            xanchor='center'
+            y=0.95,
+            xanchor='center',
+            yanchor='bottom'
         ),
         xaxis=dict(
             title=x_axis,
@@ -94,7 +98,8 @@ def plot_continuous_embedding(
             showgrid=False,
             zeroline=False,
             constrain='domain'
-        )
+        ),
+        margin=dict(t=60, r=10, l=10, b=40)
     )
 
     fig.update_xaxes(
@@ -132,7 +137,10 @@ def plot_continuous_embedding(
 
 #     df = pd.DataFrame(embedding_data, columns=dims)
 #     df[color] = adata.obs[color].values
-#     df[gene] = adata[:, gene].X.toarray().flatten()
+#     if hasattr(adata[:, gene].X, 'toarray'):
+    #     df[gene] = adata[:, gene].X.toarray().flatten()
+    # else:
+    #     df[gene] = adata[:, gene].X.flatten()
 
 #     unique_labels = sorted(df[color].unique())
 #     color_map = color_map or px.colors.qualitative.Plotly
@@ -219,7 +227,10 @@ def plot_categorical_embedding(
     # Prepare DataFrame
     df = pd.DataFrame(embedding_data, columns=dims)
     df[color] = adata.obs[color].values
-    df[gene] = adata[:, gene].X.toarray().flatten()
+    if hasattr(adata[:, gene].X, 'toarray'):
+        df[gene] = adata[:, gene].X.toarray().flatten()
+    else:
+        df[gene] = adata[:, gene].X.flatten()
 
     # Label & color mapping
     unique_labels = sorted(df[color].unique())
@@ -271,7 +282,7 @@ def plot_categorical_embedding(
     fig.update_layout(
         plot_bgcolor='white',
         paper_bgcolor='white',
-        title=dict(text=f"<b>{color}</b>", x=0.5, y=0.9, xanchor='center'),
+        title=dict(text=f"<b>{color}</b>", x=0.5, y=0.95, xanchor='center', yanchor='bottom'),
         xaxis=dict(
             title=x_axis,
             showgrid=False, zeroline=False,
