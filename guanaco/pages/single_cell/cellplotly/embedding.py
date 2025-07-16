@@ -2,6 +2,7 @@ import plotly.graph_objs as go
 import pandas as pd
 import numpy as np
 import plotly.express as px
+from .gene_extraction_utils import extract_gene_expression, apply_transformation, _gene_cache
 
 
 def plot_continuous_embedding(
@@ -28,15 +29,12 @@ def plot_continuous_embedding(
     x_axis = x_axis or embedding_columns[0]
     y_axis = y_axis or (embedding_columns[1] if len(embedding_columns) > 1 else embedding_columns[0])
 
-    # Extract gene expression and apply transformations
-    if hasattr(adata[:, color].X, 'toarray'):
-        gene_expression = adata[:, color].X.toarray().flatten()
-    else:
-        gene_expression = adata[:, color].X.flatten()
-    if transformation == 'log':
-        gene_expression = np.log1p(gene_expression)
-    elif transformation == 'z_score':
-        gene_expression = (gene_expression - np.mean(gene_expression)) / np.std(gene_expression)
+    # Extract gene expression using optimized method
+    gene_expression = extract_gene_expression(adata, color)
+    
+    # Apply transformation if specified
+    if transformation:
+        gene_expression = apply_transformation(gene_expression, transformation, copy=False)
 
     embedding_df[color] = gene_expression
 
@@ -230,10 +228,7 @@ def plot_categorical_embedding(
     
     # Only extract gene expression if gene is provided
     if gene is not None and gene in adata.var_names:
-        if hasattr(adata[:, gene].X, 'toarray'):
-            df[gene] = adata[:, gene].X.toarray().flatten()
-        else:
-            df[gene] = adata[:, gene].X.flatten()
+        df[gene] = extract_gene_expression(adata, gene)
 
     # Label & color mapping
     unique_labels = sorted(df[color].unique())
@@ -412,17 +407,12 @@ def plot_combined_embedding(
     
     # Right subplot: Gene expression (continuous)
     if gene and gene in adata.var_names:
-        # Extract gene expression
-        if hasattr(adata[:, gene].X, 'toarray'):
-            gene_expr = adata[:, gene].X.toarray().flatten()
-        else:
-            gene_expr = adata[:, gene].X.flatten()
+        # Extract gene expression using optimized method
+        gene_expr = extract_gene_expression(adata, gene)
         
-        # Apply transformation
-        if transformation == 'log':
-            gene_expr = np.log1p(gene_expr)
-        elif transformation == 'z_score':
-            gene_expr = (gene_expr - gene_expr.mean()) / gene_expr.std()
+        # Apply transformation if specified
+        if transformation:
+            gene_expr = apply_transformation(gene_expr, transformation, copy=False)
         
         df[gene] = gene_expr
         

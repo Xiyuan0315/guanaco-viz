@@ -1011,9 +1011,16 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-heatmap-colorscale-dropdown', 'value'),
          Input(f'{prefix}-heatmap-label-dropdown', 'value'),
          Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
-         Input(f'{prefix}-selected-cells-store', 'data')]
+         Input(f'{prefix}-selected-cells-store', 'data'),
+         Input(f'{prefix}-single-cell-tabs', 'value')],  # Add tab as input for lazy loading
+        [State(f'{prefix}-heatmap', 'figure')]  # Keep current figure as state
     )
-    def update_heatmap(selected_genes, selected_annotation, selected_labels, transformation, heatmap_color, secondary_annotation, discrete_color_map, selected_cells):
+    def update_heatmap(selected_genes, selected_annotation, selected_labels, transformation, heatmap_color, secondary_annotation, discrete_color_map, selected_cells, active_tab, current_figure):
+        # Lazy loading: only update if this tab is active
+        if active_tab != 'heatmap-tab':
+            # Return the current figure if it exists, otherwise return empty
+            return current_figure if current_figure else go.Figure()
+        
         filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
         
         # Use heatmap2 if secondary annotation is different from primary annotation and not "None"
@@ -1078,50 +1085,53 @@ def single_cell_callbacks(app, adata, prefix):
     
     @app.callback(
         Output(f'{prefix}-violin-plot1', 'figure'),
-        [Input(f'{prefix}-single-cell-tabs', 'value'),
-         Input(f'{prefix}-single-cell-genes-selection', 'value'),
+        [Input(f'{prefix}-single-cell-genes-selection', 'value'),
          Input(f'{prefix}-single-cell-annotation-dropdown', 'value'),
          Input(f'{prefix}-single-cell-label-selection', 'value'),
          Input(f'{prefix}-violin-log-or-zscore', 'value'),
         Input(f'{prefix}-show-box1', 'value'),
          Input(f'{prefix}-show-scatter1', 'value'),
          Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
-         Input(f'{prefix}-selected-cells-store', 'data')]
+         Input(f'{prefix}-selected-cells-store', 'data'),
+         Input(f'{prefix}-single-cell-tabs', 'value')],  # Add tab for lazy loading
+        [State(f'{prefix}-violin-plot1', 'figure')]  # Keep current figure
     )
-    def update_violin1(selected_tab, selected_genes, selected_annotation, 
-                       selected_labels, transformation, show_box_plot, show_scatter1, discrete_color_map, selected_cells):
-        if selected_tab == 'violin-tab':
-            # Use discrete color map if selected, otherwise use default
-            color_map = None
-            if discrete_color_map:
-                discrete_palette = palette_json["color_palettes"][discrete_color_map]
-                unique_labels = sorted(adata.obs[selected_annotation].unique())
-                color_map = {
-                    label: discrete_palette[i % len(discrete_palette)] for i, label in enumerate(unique_labels)
-                }
-            
-            # Filter data if cells are selected
-            filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
-            
-            fig = plot_violin1(
-                filtered_adata,
-                selected_genes,
-                selected_labels,
-                groupby=selected_annotation,
-                transformation=transformation,
-                show_box='show' in show_box_plot if show_box_plot else False,
-                show_points='show' in show_scatter1 if show_scatter1 else False,
-                groupby_label_color_map=color_map
-            )
-            num_genes = len(selected_genes)
-            num_categories = len(selected_labels)
-            fig.update_layout(
-                height=min(1000, max(300, 80 * num_genes)),
-                width=min(500, max(200, 110 * num_categories)),
-                margin=dict(l=130, r=10, t=30, b=30)
-            )
-            return fig
-        return go.Figure()
+    def update_violin1(selected_genes, selected_annotation, 
+                       selected_labels, transformation, show_box_plot, show_scatter1, discrete_color_map, selected_cells, active_tab, current_figure):
+        # Lazy loading: only update if this tab is active
+        if active_tab != 'violin-tab':
+            return current_figure if current_figure else go.Figure()
+        
+        # Use discrete color map if selected, otherwise use default
+        color_map = None
+        if discrete_color_map:
+            discrete_palette = palette_json["color_palettes"][discrete_color_map]
+            unique_labels = sorted(adata.obs[selected_annotation].unique())
+            color_map = {
+                label: discrete_palette[i % len(discrete_palette)] for i, label in enumerate(unique_labels)
+            }
+        
+        # Filter data if cells are selected
+        filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
+        
+        fig = plot_violin1(
+            filtered_adata,
+            selected_genes,
+            selected_labels,
+            groupby=selected_annotation,
+            transformation=transformation,
+            show_box='show' in show_box_plot if show_box_plot else False,
+            show_points='show' in show_scatter1 if show_scatter1 else False,
+            groupby_label_color_map=color_map
+        )
+        num_genes = len(selected_genes)
+        num_categories = len(selected_labels)
+        fig.update_layout(
+            height=min(1000, max(300, 80 * num_genes)),
+            width=min(500, max(200, 110 * num_categories)),
+            margin=dict(l=130, r=10, t=30, b=30)
+        )
+        return fig
     
     @app.callback(
         Output(f'{prefix}-p-value-method', 'options'),
@@ -1227,22 +1237,45 @@ def single_cell_callbacks(app, adata, prefix):
         Input(f'{prefix}-dotplot-log-or-zscore', 'value'),
          Input(f'{prefix}-dotplot-standardization', 'value'),
          Input(f'{prefix}-dotmatrix-color-map-dropdown', 'value'),
-         Input(f'{prefix}-selected-cells-store', 'data')]
+         Input(f'{prefix}-selected-cells-store', 'data'),
+         Input(f'{prefix}-single-cell-tabs', 'value')],  # Add tab for lazy loading
+        [State(f'{prefix}-dotplot', 'figure')]  # Keep current figure
     )
     def update_dotplot(selected_genes, selected_annotation, selected_labels, plot_type, aggregation_type, 
-                       transformation, standardization, color_map, selected_cells):
-        filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
-        return plot_dot_matrix(
-            filtered_adata,
-            selected_genes,
-            selected_annotation,
-            selected_labels,
-            aggregation=aggregation_type,
-            transformation=transformation,
-            standardization=standardization,
-            color_map=color_map,
-            plot_type=plot_type
-        )
+                       transformation, standardization, color_map, selected_cells, active_tab, current_figure):
+        # Lazy loading: only update if this tab is active
+        if active_tab != 'dotplot-tab':
+            return current_figure if current_figure else go.Figure()
+        
+        # For large datasets or backed AnnData, pass the original adata directly
+        # The plot_dot_matrix function will handle filtering more efficiently
+        if adata.n_obs > 10000 or (hasattr(adata, 'isbacked') and adata.isbacked):
+            # Pass original adata - the optimized function will handle filtering internally
+            return plot_dot_matrix(
+                adata,
+                selected_genes,
+                selected_annotation,
+                selected_labels,
+                aggregation=aggregation_type,
+                transformation=transformation,
+                standardization=standardization,
+                color_map=color_map,
+                plot_type=plot_type
+            )
+        else:
+            # For small datasets, use the filtered approach
+            filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
+            return plot_dot_matrix(
+                filtered_adata,
+                selected_genes,
+                selected_annotation,
+                selected_labels,
+                aggregation=aggregation_type,
+                transformation=transformation,
+                standardization=standardization,
+                color_map=color_map,
+                plot_type=plot_type
+            )
     
     @app.callback(
         Output(f'{prefix}-stacked-bar-plot', 'figure'),
@@ -1250,9 +1283,15 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-y-meta', 'value'),
          Input(f'{prefix}-norm-box', 'value'),
          Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
-         Input(f'{prefix}-selected-cells-store', 'data')]
+         Input(f'{prefix}-selected-cells-store', 'data'),
+         Input(f'{prefix}-single-cell-tabs', 'value')],  # Add tab for lazy loading
+        [State(f'{prefix}-stacked-bar-plot', 'figure')]  # Keep current figure
     )
-    def update_stacked_bar(x_meta, y_meta, norm, discrete_color_map, selected_cells):
+    def update_stacked_bar(x_meta, y_meta, norm, discrete_color_map, selected_cells, active_tab, current_figure):
+        # Lazy loading: only update if this tab is active
+        if active_tab != 'stacked-bar-tab':
+            return current_figure if current_figure else go.Figure()
+        
         # Check if only one metadata column is available
         unique_counts = adata.obs.nunique()
         discrete_columns = unique_counts[unique_counts < 100].index.tolist()
@@ -1334,14 +1373,15 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-pseudotime-transformation', 'value'),
          Input(f'{prefix}-pseudotime-key-dropdown', 'value'),
          Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
-         Input(f'{prefix}-selected-cells-store', 'data')]
+         Input(f'{prefix}-selected-cells-store', 'data')],
+        [State(f'{prefix}-pseudotime-plot', 'figure')]  # Keep current figure
     )
     def update_pseudotime_plot(selected_tab, selected_genes, selected_annotation, selected_labels,
                                min_expr, transformation, pseudotime_key,
-                               discrete_color_map, selected_cells):
+                               discrete_color_map, selected_cells, current_figure):
         # Only process when pseudotime tab is active
         if selected_tab != 'pseudotime-tab':
-            return go.Figure()
+            return current_figure if current_figure else go.Figure()
         
         if not selected_genes:
             # Return empty figure if no genes selected
