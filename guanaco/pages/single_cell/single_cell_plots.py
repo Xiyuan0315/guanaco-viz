@@ -1,14 +1,15 @@
 import json
 from pathlib import Path
 import warnings
-from dash import dcc, html, Input, Output, exceptions, State, callback_context
+import pandas as pd
+from dash import dcc, html, Input, Output, exceptions, State, callback_context, ALL, ctx
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 
 # Import visualization functions
-from guanaco.pages.single_cell.cellplotly.embedding import plot_categorical_embedding, plot_continuous_embedding, plot_combined_embedding
+from guanaco.pages.single_cell.cellplotly.embedding import plot_categorical_embedding, plot_continuous_embedding, plot_combined_embedding, plot_coexpression_embedding
 from guanaco.pages.single_cell.cellplotly.heatmap1 import plot_heatmap1
 from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_heatmap2
 from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
@@ -88,6 +89,30 @@ def generate_annotation_dropdown(anno_list, prefix):
 def generate_scatter_gene_selection(init_gene_list, prefix):
     return dcc.Dropdown(id=f'{prefix}-scatter-gene-selection', options=[{'label': label, 'value': label} for label in init_gene_list], 
     value = init_gene_list[0], placeholder="Search and select a gene...", style={'marginBottom': '15px'})
+
+
+def create_global_metadata_filter(adata, prefix):
+    """Create global metadata filter component (simplified for testing)"""
+    
+    # Simplified global filter panel to avoid pattern matching issues
+    global_filter_panel = html.Div([
+        html.Div([
+            html.H5("Scatter Plot Filter", style={'marginBottom': '15px', 'fontWeight': 'bold'}),
+            html.P("Global filtering temporarily disabled - focusing on co-expression feature.", 
+                   style={'fontSize': '12px', 'color': 'gray', 'marginBottom': '15px'}),
+        ]),
+        
+        html.Div([
+            dbc.Button("Apply Filter", id=f'{prefix}-apply-global-filter', color="primary", size="sm", style={'marginRight': '10px'}, disabled=True),
+            dbc.Button("Reset", id=f'{prefix}-reset-global-filter', color="secondary", size="sm", style={'marginRight': '10px'}, disabled=True),
+            html.Span(id=f'{prefix}-filter-status', children="Global filter disabled", style={'fontSize': '12px', 'fontStyle': 'italic'})
+        ], style={'marginBottom': '10px'}),
+        
+        # Store for filtered cell indices (memory efficient)
+        dcc.Store(id=f'{prefix}-global-filtered-data', data=None),
+    ], style={'padding': '15px', 'border': '1px solid #ddd', 'borderRadius': '5px', 'marginBottom': '20px'})
+    
+    return global_filter_panel
 
 
 def scatter_layout(adata,prefix):
@@ -293,6 +318,9 @@ def scatter_layout(adata,prefix):
         # Add Store component to hold selected cells data
         dcc.Store(id=f'{prefix}-selected-cells-store'),
         
+        # Global metadata filter
+        create_global_metadata_filter(adata, prefix),
+        
         dbc.Row([
             # Left column: Controls
             dbc.Col(
@@ -382,6 +410,57 @@ def scatter_layout(adata,prefix):
             [
                 html.Label("Search Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
                 generate_scatter_gene_selection(init_gene_list=adata.var_names.to_list()[:10]),
+                
+                # Co-expression controls
+                html.Div([
+                    html.Label("Co-expression Mode:", style={'fontWeight': 'bold', 'marginTop': '15px', 'marginBottom': '5px'}),
+                    dbc.RadioItems(
+                        id=f'{prefix}-coexpression-toggle',
+                        options=[
+                            {'label': 'Single Gene', 'value': 'single'},
+                            {'label': 'Co-expression', 'value': 'coexpression'}
+                        ],
+                        value='single',
+                        inline=True,
+                        style={'fontSize': '14px', 'marginBottom': '10px'}
+                    ),
+                ]),
+                
+                # Second gene selection (hidden by default)
+                html.Div([
+                    html.Label("Second Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                    dcc.Dropdown(
+                        id=f'{prefix}-scatter-gene2-selection',
+                        options=[{'label': gene, 'value': gene} for gene in adata.var_names.to_list()[:10]],
+                        placeholder="Search and select second gene...",
+                        style={'marginBottom': '10px'}
+                    ),
+                ], id=f'{prefix}-gene2-container', style={'display': 'none'}),
+                
+                # Threshold controls (hidden by default)
+                html.Div([
+                    html.Label("Gene 1 Threshold:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                    dcc.Slider(
+                        id=f'{prefix}-gene1-threshold-slider',
+                        min=0.1,
+                        max=0.9,
+                        value=0.5,
+                        marks={i/10: f'{i/10:.1f}' for i in range(1, 10)},
+                        tooltip={"placement": "bottom", "always_visible": True},
+                        className="dbc-slider"
+                    ),
+                    html.Label("Gene 2 Threshold:", style={'fontWeight': 'bold', 'marginTop': '10px', 'marginBottom': '5px'}),
+                    dcc.Slider(
+                        id=f'{prefix}-gene2-threshold-slider',
+                        min=0.1,
+                        max=0.9,
+                        value=0.5,
+                        marks={i/10: f'{i/10:.1f}' for i in range(1, 10)},
+                        tooltip={"placement": "bottom", "always_visible": True},
+                        className="dbc-slider"
+                    ),
+                ], id=f'{prefix}-threshold-container', style={'display': 'none', 'marginBottom': '15px'}),
+                
                 dcc.Loading(
                     id=f"{prefix}-loading-gene-scatter",
                     type="circle",
@@ -403,7 +482,7 @@ def scatter_layout(adata,prefix):
 # ============= Other Plots Functions =============
 
 def filter_data(adata, annotation, selected_labels, selected_cells=None):
-    """Filter data based on annotation labels and/or selected cells"""
+    """Filter data based on annotation labels and/or selected cells (for non-scatter plots only)"""
     if selected_cells is not None and len(selected_cells) > 0:
         # Use selected cells if available
         adata_filtered = adata[selected_cells]
@@ -696,6 +775,53 @@ def single_cell_callbacks(app, adata, prefix):
         matching_genes = [gene for gene in gene_list if search_value.lower() in gene.lower()]
         return [{'label': gene, 'value': gene} for gene in matching_genes[:20]]
     
+    # Global filter callbacks - simplified to avoid potential issues
+    @app.callback(
+        [Output(f'{prefix}-global-filtered-data', 'data'),
+         Output(f'{prefix}-filter-status', 'children')],
+        [Input(f'{prefix}-apply-global-filter', 'n_clicks'),
+         Input(f'{prefix}-reset-global-filter', 'n_clicks')],
+        prevent_initial_call=True
+    )
+    def update_global_filter(apply_clicks, reset_clicks):
+        if not callback_context.triggered:
+            return None, "No filters applied"
+        
+        trigger_id = callback_context.triggered[0]['prop_id']
+        
+        if 'reset' in trigger_id:
+            return None, "Filters reset - showing all cells"
+        
+        if not apply_clicks:
+            return None, "No filters applied"
+        
+        # For now, return no filtering to avoid issues
+        # This can be enhanced later when the app is working
+        return None, "Global filter disabled temporarily"
+    
+    # Co-expression callbacks
+    @app.callback(
+        [Output(f'{prefix}-gene2-container', 'style'),
+         Output(f'{prefix}-threshold-container', 'style')],
+        Input(f'{prefix}-coexpression-toggle', 'value')
+    )
+    def toggle_coexpression_controls(coexpression_mode):
+        if coexpression_mode == 'coexpression':
+            return {'display': 'block'}, {'display': 'block', 'marginBottom': '15px'}
+        else:
+            return {'display': 'none'}, {'display': 'none'}
+    
+    @app.callback(
+        Output(f'{prefix}-scatter-gene2-selection', 'options'),
+        Input(f'{prefix}-scatter-gene2-selection', 'search_value')
+    )
+    def update_scatter_gene2_selection(search_value):
+        if not search_value:
+            raise exceptions.PreventUpdate
+        gene_list = adata.var_names.to_list()
+        matching_genes = [gene for gene in gene_list if search_value.lower() in gene.lower()]
+        return [{'label': gene, 'value': gene} for gene in matching_genes[:20]]
+    
     @app.callback(
         Output(f'{prefix}-annotation-scatter', 'figure'),
         [Input(f'{prefix}-clustering-dropdown', 'value'),
@@ -710,21 +836,29 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-scatter-log-or-zscore', 'value'),  # Add for continuous transformations
          Input(f'{prefix}-plot-order', 'value'),  # Add for continuous ordering
          Input(f'{prefix}-scatter-color-map-dropdown', 'value'),  # Add for continuous color maps
+         Input(f'{prefix}-global-filtered-data', 'data'),
          ]
     )
     def update_annotation_scatter(clustering_method, x_axis, y_axis, annotation, 
                                 marker_size, opacity, legend_show, axis_show, 
-                                discrete_color_map, transformation, order, continuous_color_map):
+                                discrete_color_map, transformation, order, continuous_color_map, global_filtered_data):
         if not annotation:
             raise exceptions.PreventUpdate
         
+        # Apply global filter only for scatter plots (ultra memory efficient)
+        if global_filtered_data and global_filtered_data.get('filter_applied') and global_filtered_data.get('cell_indices'):
+            # Use AnnData's efficient indexing - creates a view, not a copy
+            filtered_adata = adata[global_filtered_data['cell_indices'], :]
+        else:
+            filtered_adata = adata
+        
         # Check if annotation is continuous or discrete
-        if is_continuous_annotation(adata, annotation):
+        if is_continuous_annotation(filtered_adata, annotation):
             # Use continuous plotting
             color_map = continuous_color_map or 'Viridis'
             
             fig = plot_continuous_annotation(
-                adata=adata,
+                adata=filtered_adata,
                 embedding_key=clustering_method,
                 annotation=annotation,
                 x_axis=x_axis,
@@ -744,7 +878,7 @@ def single_cell_callbacks(app, adata, prefix):
                 color_map = palette_json["color_palettes"][discrete_color_map]
             
             fig = plot_categorical_embedding(
-                adata=adata,
+                adata=filtered_adata,
                 gene=None,  # Don't pass gene to avoid unnecessary computation
                 embedding_key=clustering_method,
                 color=annotation,
@@ -780,26 +914,60 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-opacity-slider', 'value'),
          Input(f'{prefix}-annotation-scatter', 'relayoutData'),
          Input(f'{prefix}-axis-toggle', 'value'),
+         Input(f'{prefix}-coexpression-toggle', 'value'),
+         Input(f'{prefix}-scatter-gene2-selection', 'value'),
+         Input(f'{prefix}-gene1-threshold-slider', 'value'),
+         Input(f'{prefix}-gene2-threshold-slider', 'value'),
+         Input(f'{prefix}-scatter-legend-toggle', 'value'),
+         Input(f'{prefix}-global-filtered-data', 'data'),
          ]
     )
-    def update_gene_scatter(gene_name, annotation, clustering, x_axis, y_axis, transformation, order, color_map, marker_size, opacity, annotation_relayout, axis_show):
+    def update_gene_scatter(gene_name, annotation, clustering, x_axis, y_axis, transformation, order, 
+                           color_map, marker_size, opacity, annotation_relayout, axis_show,
+                           coexpression_mode, gene2_name, threshold1, threshold2, legend_show, global_filtered_data):
         if not gene_name:
             raise exceptions.PreventUpdate
         
-        fig = plot_continuous_embedding(
-            adata=adata,
-            embedding_key=clustering,
-            color=gene_name,
-            x_axis=x_axis,
-            y_axis=y_axis,
-            transformation = transformation,
-            order = order,
-            color_map=color_map or 'Viridis',
-            marker_size=marker_size,
-            opacity=opacity,
-            annotation = None,  # Don't pass annotation for gene expression plots
-            axis_show=axis_show,
-        )
+        # Apply global filter only for scatter plots (ultra memory efficient)
+        if global_filtered_data and global_filtered_data.get('filter_applied') and global_filtered_data.get('cell_indices'):
+            # Use AnnData's efficient indexing - creates a view, not a copy
+            filtered_adata = adata[global_filtered_data['cell_indices'], :]
+        else:
+            filtered_adata = adata
+        
+        if coexpression_mode == 'coexpression' and gene2_name:
+            # Use co-expression visualization
+            fig = plot_coexpression_embedding(
+                adata=filtered_adata,
+                embedding_key=clustering,
+                gene1=gene_name,
+                gene2=gene2_name,
+                x_axis=x_axis,
+                y_axis=y_axis,
+                threshold1=threshold1,
+                threshold2=threshold2,
+                transformation=transformation,
+                marker_size=marker_size,
+                opacity=opacity,
+                legend_show=legend_show,
+                axis_show=axis_show
+            )
+        else:
+            # Use single gene visualization
+            fig = plot_continuous_embedding(
+                adata=filtered_adata,
+                embedding_key=clustering,
+                color=gene_name,
+                x_axis=x_axis,
+                y_axis=y_axis,
+                transformation = transformation,
+                order = order,
+                color_map=color_map or 'Viridis',
+                marker_size=marker_size,
+                opacity=opacity,
+                annotation = None,  # Don't pass annotation for gene expression plots
+                axis_show=axis_show,
+            )
         
         # Apply zoom from annotation scatter plot
         if annotation_relayout and ('xaxis.range[0]' in annotation_relayout and 'yaxis.range[0]' in annotation_relayout):
@@ -906,12 +1074,11 @@ def single_cell_callbacks(app, adata, prefix):
     )
     def download_selected_cells(n_clicks_txt, n_clicks_h5ad, selected_cells):
         """Download selected cell IDs or subset AnnData"""
-        ctx = callback_context
-        if not ctx.triggered or not selected_cells:
+        if not callback_context.triggered or not selected_cells:
             raise PreventUpdate
         
         # Determine which button was clicked
-        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        button_id = callback_context.triggered[0]['prop_id'].split('.')[0]
         
         if f'{prefix}-download-cellids' in button_id:
             # Download cell IDs as text file
@@ -1279,18 +1446,22 @@ def single_cell_callbacks(app, adata, prefix):
     
     @app.callback(
         Output(f'{prefix}-stacked-bar-plot', 'figure'),
-        [Input(f'{prefix}-x-meta', 'value'),
-         Input(f'{prefix}-y-meta', 'value'),
-         Input(f'{prefix}-norm-box', 'value'),
+        [Input(f'{prefix}-norm-box', 'value'),
          Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
          Input(f'{prefix}-selected-cells-store', 'data'),
+         Input(f'{prefix}-x-meta', 'value'),
+         Input(f'{prefix}-y-meta', 'value'),
          Input(f'{prefix}-single-cell-tabs', 'value')],  # Add tab for lazy loading
         [State(f'{prefix}-stacked-bar-plot', 'figure')]  # Keep current figure
     )
-    def update_stacked_bar(x_meta, y_meta, norm, discrete_color_map, selected_cells, active_tab, current_figure):
+    def update_stacked_bar(norm, discrete_color_map, selected_cells, 
+                          x_meta, y_meta, active_tab, current_figure):
         # Lazy loading: only update if this tab is active
         if active_tab != 'stacked-bar-tab':
-            return current_figure if current_figure else go.Figure()
+            if current_figure:
+                return current_figure
+            else:
+                raise PreventUpdate
         
         # Check if only one metadata column is available
         unique_counts = adata.obs.nunique()

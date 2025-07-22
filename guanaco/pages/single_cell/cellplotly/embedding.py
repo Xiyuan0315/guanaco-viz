@@ -527,3 +527,165 @@ def plot_combined_embedding(
     
     return fig
 
+
+def plot_coexpression_embedding(
+    adata, embedding_key, gene1, gene2,
+    x_axis=None, y_axis=None,
+    threshold1=0.5, threshold2=0.5,
+    transformation=None,
+    color_map=None,
+    marker_size=5, opacity=1,
+    legend_show='right', axis_show=True
+):
+    """
+    Plot co-expression of two genes on a 2D embedding.
+    Cells are categorized into 4 groups based on expression thresholds.
+    """
+    embedding_prefixes = {
+        'X_umap': 'UMAP', 'X_pca': 'PCA', 'X_tsne': 't-SNE',
+        'X_diffmap': 'DiffMap', 'X_phate': 'PHATE', 'X_draw_graph_fa': 'FA'
+    }
+    embedding_prefix = embedding_prefixes.get(embedding_key, embedding_key.upper())
+    embedding_data = adata.obsm[embedding_key]
+
+    # Set column names for the embedding
+    num_dimensions = embedding_data.shape[1]
+    embedding_columns = [f'{embedding_prefix}{i + 1}' for i in range(num_dimensions)]
+    embedding_df = pd.DataFrame(embedding_data, columns=embedding_columns)
+
+    # Default x and y axis
+    x_axis = x_axis or embedding_columns[0]
+    y_axis = y_axis or (embedding_columns[1] if len(embedding_columns) > 1 else embedding_columns[0])
+
+    # Extract gene expression for both genes
+    gene1_expr = extract_gene_expression(adata, gene1)
+    gene2_expr = extract_gene_expression(adata, gene2)
+    
+    # Apply transformation if specified
+    if transformation:
+        gene1_expr = apply_transformation(gene1_expr, transformation, copy=True)
+        gene2_expr = apply_transformation(gene2_expr, transformation, copy=True)
+
+    # Create categories based on thresholds
+    # Calculate percentile-based thresholds
+    gene1_threshold = np.percentile(gene1_expr, threshold1 * 100)
+    gene2_threshold = np.percentile(gene2_expr, threshold2 * 100)
+    
+    # Categorize cells
+    gene1_expressed = gene1_expr > gene1_threshold
+    gene2_expressed = gene2_expr > gene2_threshold
+    
+    # Create category labels
+    categories = np.zeros(len(adata), dtype='object')
+    categories[:] = 'Neither'
+    categories[gene1_expressed & ~gene2_expressed] = f'{gene1} only'
+    categories[~gene1_expressed & gene2_expressed] = f'{gene2} only'
+    categories[gene1_expressed & gene2_expressed] = 'Co-expressed'
+    
+    embedding_df['category'] = categories
+    embedding_df['gene1_expr'] = gene1_expr
+    embedding_df['gene2_expr'] = gene2_expr
+
+    # Define color mapping for 4 categories
+    if color_map is None:
+        color_map = {
+            'Neither': '#E8E8E8',  # Light gray
+            f'{gene1} only': '#648fff',  # Blue (color-blind friendly)
+            f'{gene2} only': '#ffb000',  # Orange (color-blind friendly)
+            'Co-expressed': '#dc267f'  # Magenta (color-blind friendly)
+        }
+    
+    # Ensure all 4 categories appear in order
+    category_order = ['Neither', f'{gene1} only', f'{gene2} only', 'Co-expressed']
+    
+    fig = go.Figure()
+
+    # Add traces for each category
+    for category in category_order:
+        mask = embedding_df['category'] == category
+        if mask.any():
+            fig.add_trace(go.Scattergl(
+                x=embedding_df.loc[mask, x_axis],
+                y=embedding_df.loc[mask, y_axis],
+                mode='markers',
+                marker=dict(
+                    size=marker_size,
+                    color=color_map.get(category, '#808080'),
+                    opacity=opacity,
+                ),
+                name=category,
+                customdata=np.stack([
+                    embedding_df.loc[mask, 'gene1_expr'],
+                    embedding_df.loc[mask, 'gene2_expr']
+                ], axis=-1),
+                hovertemplate=(
+                    f'{gene1}: %{{customdata[0]:.2f}}<br>' +
+                    f'{gene2}: %{{customdata[1]:.2f}}<br>' +
+                    f'Category: {category}<extra></extra>'
+                ),
+                showlegend=(legend_show == 'right')
+            ))
+
+    # Add category labels on plot if requested
+    if legend_show == 'on data':
+        for category in category_order:
+            mask = embedding_df['category'] == category
+            if mask.any():
+                median_x = embedding_df.loc[mask, x_axis].median()
+                median_y = embedding_df.loc[mask, y_axis].median()
+                fig.add_annotation(
+                    x=median_x, y=median_y,
+                    text=f'<b>{category}</b>',
+                    showarrow=False,
+                    font=dict(size=10, color='black'),
+                    xanchor='center', yanchor='middle',
+                    opacity=0.9,
+                )
+
+    # Update layout
+    fig.update_layout(
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        title=dict(
+            text=f'<b>Co-expression: {gene1} & {gene2}</b>',
+            x=0.5,
+            y=0.95,
+            xanchor='center',
+            yanchor='bottom'
+        ),
+        xaxis=dict(
+            title=x_axis,
+            showgrid=False,
+            zeroline=False,
+            scaleanchor='y',
+            constrain='domain'
+        ),
+        yaxis=dict(
+            title=y_axis,
+            showgrid=False,
+            zeroline=False,
+            constrain='domain'
+        ),
+        legend=dict(
+            orientation='v',
+            itemsizing='constant',
+            x=1.02, y=0.5,
+            bgcolor='rgba(0,0,0,0)',
+            itemclick='toggle',
+            itemdoubleclick='toggleothers',
+            font=dict(size=10)
+        ) if legend_show == 'right' else None,
+        margin=dict(t=60, r=10, l=10, b=40)
+    )
+
+    fig.update_xaxes(
+        showline=True, linewidth=2, linecolor='black',
+        tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
+    )
+    fig.update_yaxes(
+        showline=True, linewidth=2, linecolor='black',
+        tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
+    )
+
+    return fig
+
