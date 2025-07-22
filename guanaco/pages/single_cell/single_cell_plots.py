@@ -26,7 +26,7 @@ from guanaco.pages.single_cell.mod024_stacked_bar import generate_stacked_bar_la
 from guanaco.pages.single_cell.mod025_pseudotime import generate_pseudotime_layout
 
 # Import configs
-from guanaco.config import scatter_config
+from guanaco.config import scatter_config, gene_scatter_config
 from guanaco.data_loader import color_config
 
 warnings.filterwarnings('ignore', message='.*observed=False.*')
@@ -443,7 +443,7 @@ def scatter_layout(adata,prefix):
                 dcc.Loading(
                     id=f"{prefix}-loading-gene-scatter",
                     type="circle",
-                    children=dcc.Graph(id=f'{prefix}-gene-scatter', config=scatter_config),
+                    children=dcc.Graph(id=f'{prefix}-gene-scatter', config=gene_scatter_config),
                     style={"height": "100%"},
                 ),
             ],
@@ -839,9 +839,18 @@ def single_cell_callbacks(app, adata, prefix):
         
         # Enable selection mode and set height to match CSS
         fig.update_layout(
-            dragmode='select',
+            dragmode='pan',  # Changed from 'select' to 'pan' as default
             height=450,
-            margin=dict(t=20, b=20, l=20, r=20)
+            margin=dict(t=60, b=40, l=40, r=40),  # Increased top margin for title space
+            # Fix aspect ratio to prevent distortion
+            xaxis=dict(
+                scaleanchor='y',
+                scaleratio=1,
+                constrain='domain'
+            ),
+            yaxis=dict(
+                constrain='domain'
+            )
         )
         
         return fig
@@ -908,6 +917,20 @@ def single_cell_callbacks(app, adata, prefix):
                 axis_show=axis_show,
             )
         
+        # Always fix aspect ratio first
+        fig.update_layout(
+            height=450,
+            margin=dict(t=60, b=40, l=40, r=40),  # Consistent margins with annotation scatter
+            xaxis=dict(
+                scaleanchor='y',
+                scaleratio=1,
+                constrain='domain'
+            ),
+            yaxis=dict(
+                constrain='domain'
+            )
+        )
+        
         # Apply zoom from annotation scatter plot
         if annotation_relayout and ('xaxis.range[0]' in annotation_relayout and 'yaxis.range[0]' in annotation_relayout):
             x_range = [annotation_relayout['xaxis.range[0]'], annotation_relayout['xaxis.range[1]']]
@@ -916,17 +939,14 @@ def single_cell_callbacks(app, adata, prefix):
                 xaxis=dict(
                     range=x_range,
                     scaleanchor='y',
+                    scaleratio=1,
                     constrain='domain'
                 ), 
                 yaxis=dict(
                     range=y_range,
                     constrain='domain'
-                ),
-                height=450
+                )
             )
-        else:
-            # Ensure consistent height even without zoom
-            fig.update_layout(height=450)
             
         return fig
     
@@ -969,9 +989,21 @@ def single_cell_callbacks(app, adata, prefix):
                 curve_number = point.get('curveNumber', 0)
                 point_number = point.get('pointNumber', 0)
                 
+                # Skip the background trace (curve_number 0 is the grey background)
+                if curve_number == 0:
+                    continue
+                
                 # Get all unique categories in order
                 unique_categories = sorted(adata.obs[current_annotation].unique())
-                selected_category = unique_categories[curve_number]
+                
+                # Adjust curve_number to account for background trace
+                category_index = curve_number - 1
+                
+                # Check if the category index is valid
+                if category_index < 0 or category_index >= len(unique_categories):
+                    continue
+                
+                selected_category = unique_categories[category_index]
                 
                 # Get all cells in this category
                 category_mask = adata.obs[current_annotation] == selected_category
@@ -1514,6 +1546,57 @@ def single_cell_callbacks(app, adata, prefix):
         return new_state
     
     
+    # Callback to populate AgGrid columns for x-axis ordering
+    @app.callback(
+        [Output(f'{prefix}-stacked-bar-x-order-grid', 'columnDefs'),
+         Output(f'{prefix}-stacked-bar-x-order-grid', 'rowData')],
+        [Input(f'{prefix}-stacked-bar-x-axis', 'value'),
+         Input(f'{prefix}-single-cell-tabs', 'value')]
+    )
+    def update_x_axis_order_grid(x_axis_meta, active_tab):
+        if active_tab != 'stacked-bar-tab' or not x_axis_meta:
+            return [], []
+        
+        # Get unique values for the selected x-axis metadata
+        x_values = sorted(adata.obs[x_axis_meta].unique())
+        x_values_str = [str(val) for val in x_values]
+        
+        # Create column definitions - each x-axis group becomes a column
+        column_defs = []
+        for val in x_values_str:
+            column_defs.append({
+                "field": val,
+                "headerName": val,
+                "width": 150,
+                "minWidth": 120,
+                "suppressMovable": False,  # Allow dragging
+                "headerClass": "ag-header-cell-center",
+                "resizable": True
+            })
+        
+        # No rows, only headers
+        row_data = []
+        
+        return column_defs, row_data
+    
+    # Store to keep track of column order
+    @app.callback(
+        Output(f'{prefix}-x-axis-column-order-store', 'data'),
+        Input(f'{prefix}-stacked-bar-x-order-grid', 'columnState'),
+        prevent_initial_call=True
+    )
+    def update_column_order(column_state):
+        if not column_state:
+            return []
+        
+        # Extract column order from column state
+        column_order = []
+        for col in column_state:
+            if 'colId' in col:
+                column_order.append(col['colId'])
+        
+        return column_order
+    
     # Stacked bar plot callback
     @app.callback(
         Output(f'{prefix}-stacked-bar-plot', 'figure'),
@@ -1523,11 +1606,12 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-single-cell-tabs', 'value'),
          Input(f'{prefix}-single-cell-annotation-dropdown', 'value'),
          Input(f'{prefix}-single-cell-label-selection', 'value'),
-         Input(f'{prefix}-stacked-bar-x-axis', 'value')],
+         Input(f'{prefix}-stacked-bar-x-axis', 'value'),
+         Input(f'{prefix}-x-axis-column-order-store', 'data')],
         [State(f'{prefix}-stacked-bar-plot', 'figure')]
     )
     def update_stacked_bar(norm, discrete_color_map, selected_cells, active_tab, 
-                          annotation, selected_labels, x_axis_meta, current_figure):
+                          annotation, selected_labels, x_axis_meta, x_axis_order, current_figure):
         # Lazy loading: only update if this tab is active
         if active_tab != 'stacked-bar-tab':
             return current_figure if current_figure else go.Figure()
@@ -1555,6 +1639,17 @@ def single_cell_callbacks(app, adata, prefix):
         # Filter data
         filtered_adata = filter_data(adata, annotation, selected_labels, selected_cells)
         
+        # Handle x-axis ordering - use column order from AgGrid or default to sorted
+        if x_axis_order and len(x_axis_order) > 0:
+            # Use the order from dragged columns
+            final_x_order = x_axis_order
+        elif x_axis_meta:
+            # Default to sorted order if no dragging has occurred
+            x_values = sorted(adata.obs[x_axis_meta].unique())
+            final_x_order = [str(val) for val in x_values]
+        else:
+            final_x_order = None
+        
         # Create fixed color mapping based on annotation categories
         all_categories = sorted(adata.obs[annotation].unique())
         
@@ -1577,7 +1672,8 @@ def single_cell_callbacks(app, adata, prefix):
             norm=norm, 
             adata=filtered_adata, 
             color_map=fixed_color_map,
-            y_order=selected_labels  # Order from Select Labels in left control
+            y_order=selected_labels,  # Order from Select Labels in left control
+            x_order=final_x_order  # Order from the draggable AgGrid or default
         )
     
     

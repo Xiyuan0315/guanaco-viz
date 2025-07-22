@@ -1,6 +1,7 @@
 from dash import dcc, html
 import dash_bootstrap_components as dbc
 import dash_draggable
+import dash_ag_grid as dag
 from guanaco.config import common_config
 
 def generate_stacked_bar_layout(discrete_label_list, prefix):
@@ -77,12 +78,55 @@ def generate_stacked_bar_layout(discrete_label_list, prefix):
         ], style={'color': '#6c757d', 'fontSize': '14px', 'marginBottom': '15px'})
     ])
     
+    # Draggable AG Grid component for x-axis ordering (will be placed after plot)
+    x_axis_order_component = html.Div([
+        html.Label("X-axis group order (drag column headers to reorder):", 
+                   style={'fontWeight': 'bold', 'marginBottom': '10px'}),
+        dag.AgGrid(
+            id=f'{prefix}-stacked-bar-x-order-grid',
+            rowData=[],  # No rows, only headers
+            columnDefs=[],  # Will be populated dynamically based on x-axis selection
+            defaultColDef={
+                "sortable": False,
+                "filter": False,
+                "resizable": True,
+                "suppressMenu": True,
+                "headerHeight": 40,
+                "minWidth": 120,
+                "width": 150,
+                "headerClass": "ag-header-cell-center"
+            },
+            dashGridOptions={
+                "headerHeight": 40,
+                "rowHeight": 0,
+                "suppressRowClickSelection": True,
+                "suppressCellSelection": True,
+                "suppressMovableColumns": False,  # Enable column dragging
+                "animateRows": False,
+                "suppressHorizontalScroll": False,
+                "onColumnMoved": True,  # Enable column moved event
+                "suppressLoadingOverlay": True,
+                "suppressNoRowsOverlay": True,
+                "suppressDisplayTotal": True
+            },
+            style={"height": "40px", "marginBottom": "10px", "overflow": "hidden"},
+            className="ag-theme-alpine"
+        ),
+        html.P("Drag column headers to reorder x-axis groups.", 
+               style={'fontSize': '12px', 'color': '#6c757d', 'marginTop': '5px', 'marginBottom': '15px'})
+    ])
+    
+    # Store to track column order
+    column_order_store = dcc.Store(id=f'{prefix}-x-axis-column-order-store', data=[])
+    
     # Final layout
     bar_layout = html.Div([
+        column_order_store,
         info_text,
         x_axis_dropdown,
         norm_box,
-        draggable_bar
+        draggable_bar,
+        x_axis_order_component  # Moved to bottom after the plot
     ], style={
         'padding': '20px',
         'marginBottom': '15px',

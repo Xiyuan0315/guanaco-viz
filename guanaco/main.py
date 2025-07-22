@@ -101,15 +101,12 @@ def toggle_tip(pathname, n_clicks, is_open, store):
     if store is None:
         store = {"shown": False}
     
-    # 如果用户点击了 "Got it" 按钮
     if n_clicks:
         return False, {"shown": True}
     
-    # 如果还没展示过这个提示
     if not store.get("shown", False):
         return True, {"shown": True}
 
-    # 否则就不显示
     return False, store
 
 
