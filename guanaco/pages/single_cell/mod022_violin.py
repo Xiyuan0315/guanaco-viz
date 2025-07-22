@@ -9,8 +9,7 @@ def generate_violin_layout(adata, default_gene_markers,discrete_label_list,prefi
         id=f'{prefix}-violin-log-or-zscore',
         options=[
             {'label': 'None', 'value': 'False'},
-            {'label': 'Log', 'value': 'log'},
-            {'label': 'Z-score(across cell)', 'value': 'z_score'}
+            {'label': 'Log', 'value': 'log'}
         ],
         value='log',
         inline=True,
@@ -21,8 +20,7 @@ def generate_violin_layout(adata, default_gene_markers,discrete_label_list,prefi
         id=f'{prefix}-violin2-log-or-zscore',
         options=[
             {'label': 'None', 'value': 'False'},
-            {'label': 'Log', 'value': 'log'},
-            {'label': 'Z-score', 'value': 'z_score'}
+            {'label': 'Log', 'value': 'log'}
         ],
         value='log',
         inline=False
@@ -56,34 +54,51 @@ def generate_violin_layout(adata, default_gene_markers,discrete_label_list,prefi
         switch=True
     )
 
-    comparison_selection = dcc.Dropdown(
-        id=f'{prefix}-p-value-selection',
-        options=[
-            {'label': 'None', 'value': 'None'},
-            {'label': 'Within Group (compare hues)', 'value': 'within'},
-            {'label': 'Between Group (compare groups)', 'value': 'between'},
-        ],
-        value='within',
-        clearable=False
-    )
-
-    binary_selection = dcc.Dropdown(
-        id=f'{prefix}-binary-selection',
+    # Meta1 dropdown (primary metadata)
+    meta1_selection = dcc.Dropdown(
+        id=f'{prefix}-meta1-selection',
         options=[{'label': meta, 'value': meta} for meta in discrete_label_list],
         value=discrete_label_list[0],
-        clearable=False
+        clearable=False,
+        placeholder="Select primary metadata"
     )
 
-    multi_class_selection = dcc.Dropdown(
-        id=f'{prefix}-multi-class-selection',
-        options=[{'label': meta, 'value': meta} for meta in discrete_label_list],
-        value=discrete_label_list[len(discrete_label_list)//2],
-        clearable=False
-    )
-
-    p_value_method = dcc.Dropdown(
-        id=f'{prefix}-p-value-method',
+    # Meta2 dropdown (secondary metadata - optional)
+    meta2_selection = dcc.Dropdown(
+        id=f'{prefix}-meta2-selection',
+        options=[{'label': 'None', 'value': 'none'}] + [{'label': meta, 'value': meta} for meta in discrete_label_list],
         value='none',
+        clearable=False,
+        placeholder="Select secondary metadata (optional)"
+    )
+
+    # Mode selection dropdown
+    mode_selection = dcc.Dropdown(
+        id=f'{prefix}-mode-selection',
+        options=[
+            {'label': 'Mode 1: One metadata only', 'value': 'mode1'},
+            {'label': 'Mode 2: Facet by meta1, compare meta2', 'value': 'mode2'},
+            {'label': 'Mode 3: Linear model (meta1 + confounder)', 'value': 'mode3'},
+            {'label': 'Mode 4: Mixed model (meta1 + random effect)', 'value': 'mode4'},
+        ],
+        value='mode1',
+        clearable=False
+    )
+
+    # Test method dropdown (with auto option)
+    test_method_selection = dcc.Dropdown(
+        id=f'{prefix}-test-method-selection',
+        options=[
+            {'label': 'Auto (recommended)', 'value': 'auto'},
+            {'label': 'Mann-Whitney U', 'value': 'mwu-test'},
+            {'label': 'T-test', 'value': 'ttest'},
+            {'label': 'Kruskal-Wallis', 'value': 'kw-test'},
+            {'label': 'ANOVA', 'value': 'anova'},
+            {'label': 'Linear Model', 'value': 'linear-model'},
+            {'label': 'Mixed Model', 'value': 'mixed-model'},
+            {'label': 'None', 'value': 'none'}
+        ],
+        value='auto',
         clearable=False
     )
 
@@ -136,25 +151,31 @@ def generate_violin_layout(adata, default_gene_markers,discrete_label_list,prefi
             ], style={'marginBottom': '10px'}),
             html.Div([
                 html.Div([
-                    html.Label("Group by:", style={'fontWeight': 'bold'}),
-                    multi_class_selection
+                    html.Label("Meta1 (Primary):", style={'fontWeight': 'bold'}),
+                    meta1_selection
                 ], style={'flex': '1'}),
                 html.Div([
-                    html.Label("Splitted by:", style={'fontWeight': 'bold'}),
-                    binary_selection
+                    html.Label("Meta2 (Secondary):", style={'fontWeight': 'bold'}),
+                    meta2_selection
                 ], style={'flex': '1'}),
             ], style={'display': 'flex', 'marginBottom': '10px', 'gap': '10px'}),
 
             html.Div([
                 html.Div([
-                    html.Label("Comparison Type:", style={'fontWeight': 'bold'}),
-                    comparison_selection
+                    html.Label("Analysis Mode:", style={'fontWeight': 'bold'}),
+                    mode_selection
                 ], style={'flex': '1'}),
                 html.Div([
-                    html.Label("Test Method:", style={'fontWeight': 'bold'}),
-                    p_value_method
+                    html.Label("Statistical Test:", style={'fontWeight': 'bold'}),
+                    test_method_selection
                 ], style={'flex': '1'}),
             ], style={'display': 'flex', 'marginBottom': '10px', 'gap': '10px'}),
+            
+            # Mode explanation helper text
+            html.Div(
+                id=f'{prefix}-mode-explanation',
+                style={'fontSize': '12px', 'color': 'gray', 'marginBottom': '10px', 'fontStyle': 'italic'}
+            ),
 
             html.Label("More Options:", style={'fontWeight': 'bold'}),
             violin_show_box2,

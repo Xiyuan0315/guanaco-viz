@@ -1,18 +1,19 @@
 import json
 from pathlib import Path
 import warnings
-from dash import dcc, html, Input, Output, exceptions, State, callback_context
+from dash import dcc, html, Input, Output, exceptions, State, callback_context, ALL
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 
 # Import visualization functions
-from guanaco.pages.single_cell.cellplotly.embedding import plot_categorical_embedding, plot_continuous_embedding, plot_combined_embedding
+from guanaco.pages.single_cell.cellplotly.embedding import plot_categorical_embedding, plot_continuous_embedding, plot_combined_embedding, plot_coexpression_embedding
 from guanaco.pages.single_cell.cellplotly.heatmap1 import plot_heatmap1
 from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_heatmap2
 from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
 from guanaco.pages.single_cell.cellplotly.violin2 import plot_violin2
+from guanaco.pages.single_cell.cellplotly.violin2_new import plot_violin2_new
 from guanaco.pages.single_cell.cellplotly.stacked_bar import plot_stacked_bar
 from guanaco.pages.single_cell.cellplotly.dotmatrix import plot_dot_matrix
 from guanaco.pages.single_cell.cellplotly.pseudotime import plot_genes_in_pseudotime
@@ -135,8 +136,7 @@ def scatter_layout(adata,prefix):
             id=f'{prefix}-scatter-log-or-zscore',
             options=[
                 {'label': 'None', 'value':None},
-                {'label': 'Log', 'value': 'log'},
-                {'label': 'Z-score', 'value': 'z_score'},
+                {'label': 'Log', 'value': 'log'}
             ],
             value='log',
             inline=True,
@@ -382,6 +382,64 @@ def scatter_layout(adata,prefix):
             [
                 html.Label("Search Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
                 generate_scatter_gene_selection(init_gene_list=adata.var_names.to_list()[:10]),
+                # Add toggle for co-expression mode
+                dbc.RadioItems(
+                    id=f'{prefix}-coexpression-toggle',
+                    options=[
+                        {'label': 'Single Gene', 'value': 'single'},
+                        {'label': 'Co-expression', 'value': 'coexpression'}
+                    ],
+                    value='single',
+                    inline=True,
+                    style={'marginBottom': '10px', 'fontSize': '14px'}
+                ),
+                # Second gene selection (hidden by default)
+                html.Div(
+                    [
+                        html.Label("Second Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                        dcc.Dropdown(
+                            id=f'{prefix}-scatter-gene2-selection',
+                            options=[{'label': label, 'value': label} for label in adata.var_names.to_list()[:10]],
+                            value=adata.var_names.to_list()[1],
+                            placeholder="Search and select second gene...",
+                            style={'marginBottom': '10px'}
+                        ),
+                    ],
+                    id=f'{prefix}-gene2-container',
+                    style={'display': 'none'}
+                ),
+                # Threshold sliders (hidden by default)
+                html.Div(
+                    [
+                        html.Label("Expression Thresholds:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                        html.Div([
+                            html.Label("Gene 1 Threshold:", style={'fontSize': '12px'}),
+                            dcc.Slider(
+                                id=f'{prefix}-gene1-threshold-slider',
+                                min=0,
+                                max=1,
+                                value=0.5,
+                                marks=None,
+                                tooltip={"placement": "bottom", "always_visible": True},
+                                className="dbc-slider"
+                            ),
+                        ], style={'marginBottom': '10px'}),
+                        html.Div([
+                            html.Label("Gene 2 Threshold:", style={'fontSize': '12px'}),
+                            dcc.Slider(
+                                id=f'{prefix}-gene2-threshold-slider',
+                                min=0,
+                                max=1,
+                                value=0.5,
+                                marks=None,
+                                tooltip={"placement": "bottom", "always_visible": True},
+                                className="dbc-slider"
+                            ),
+                        ], style={'marginBottom': '10px'}),
+                    ],
+                    id=f'{prefix}-threshold-container',
+                    style={'display': 'none'}
+                ),
                 dcc.Loading(
                     id=f"{prefix}-loading-gene-scatter",
                     type="circle",
@@ -697,6 +755,28 @@ def single_cell_callbacks(app, adata, prefix):
         return [{'label': gene, 'value': gene} for gene in matching_genes[:20]]
     
     @app.callback(
+        Output(f'{prefix}-scatter-gene2-selection', 'options'),
+        Input(f'{prefix}-scatter-gene2-selection', 'search_value')
+    )
+    def update_scatter_gene2_selection(search_value):
+        if not search_value:
+            raise exceptions.PreventUpdate
+        gene_list = adata.var_names.to_list()
+        matching_genes = [gene for gene in gene_list if search_value.lower() in gene.lower()]
+        return [{'label': gene, 'value': gene} for gene in matching_genes[:20]]
+    
+    @app.callback(
+        [Output(f'{prefix}-gene2-container', 'style'),
+         Output(f'{prefix}-threshold-container', 'style')],
+        Input(f'{prefix}-coexpression-toggle', 'value')
+    )
+    def toggle_coexpression_controls(mode):
+        if mode == 'coexpression':
+            return {'display': 'block'}, {'display': 'block'}
+        else:
+            return {'display': 'none'}, {'display': 'none'}
+    
+    @app.callback(
         Output(f'{prefix}-annotation-scatter', 'figure'),
         [Input(f'{prefix}-clustering-dropdown', 'value'),
          Input(f'{prefix}-x-axis', 'value'),
@@ -780,26 +860,53 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-opacity-slider', 'value'),
          Input(f'{prefix}-annotation-scatter', 'relayoutData'),
          Input(f'{prefix}-axis-toggle', 'value'),
+         Input(f'{prefix}-coexpression-toggle', 'value'),
+         Input(f'{prefix}-scatter-gene2-selection', 'value'),
+         Input(f'{prefix}-gene1-threshold-slider', 'value'),
+         Input(f'{prefix}-gene2-threshold-slider', 'value'),
+         Input(f'{prefix}-scatter-legend-toggle', 'value'),
          ]
     )
-    def update_gene_scatter(gene_name, annotation, clustering, x_axis, y_axis, transformation, order, color_map, marker_size, opacity, annotation_relayout, axis_show):
+    def update_gene_scatter(gene_name, annotation, clustering, x_axis, y_axis, transformation, order, 
+                           color_map, marker_size, opacity, annotation_relayout, axis_show,
+                           coexpression_mode, gene2_name, threshold1, threshold2, legend_show):
         if not gene_name:
             raise exceptions.PreventUpdate
         
-        fig = plot_continuous_embedding(
-            adata=adata,
-            embedding_key=clustering,
-            color=gene_name,
-            x_axis=x_axis,
-            y_axis=y_axis,
-            transformation = transformation,
-            order = order,
-            color_map=color_map or 'Viridis',
-            marker_size=marker_size,
-            opacity=opacity,
-            annotation = None,  # Don't pass annotation for gene expression plots
-            axis_show=axis_show,
-        )
+        if coexpression_mode == 'coexpression' and gene2_name:
+            # Use co-expression visualization
+            fig = plot_coexpression_embedding(
+                adata=adata,
+                embedding_key=clustering,
+                gene1=gene_name,
+                gene2=gene2_name,
+                x_axis=x_axis,
+                y_axis=y_axis,
+                threshold1=threshold1,
+                threshold2=threshold2,
+                transformation=transformation,
+                color_map=None,  # Use default colors for co-expression
+                marker_size=marker_size,
+                opacity=opacity,
+                legend_show=legend_show,
+                axis_show=axis_show,
+            )
+        else:
+            # Use single gene visualization
+            fig = plot_continuous_embedding(
+                adata=adata,
+                embedding_key=clustering,
+                color=gene_name,
+                x_axis=x_axis,
+                y_axis=y_axis,
+                transformation=transformation,
+                order=order,
+                color_map=color_map or 'Viridis',
+                marker_size=marker_size,
+                opacity=opacity,
+                annotation=None,
+                axis_show=axis_show,
+            )
         
         # Apply zoom from annotation scatter plot
         if annotation_relayout and ('xaxis.range[0]' in annotation_relayout and 'yaxis.range[0]' in annotation_relayout):
@@ -955,7 +1062,7 @@ def single_cell_callbacks(app, adata, prefix):
     @app.callback(
         Output(f'{prefix}-violin2-group-selection', 'options'),
         Output(f'{prefix}-violin2-group-selection', 'value'),
-        [Input(f'{prefix}-multi-class-selection', 'value'),
+        [Input(f'{prefix}-meta1-selection', 'value'),
          Input(f'{prefix}-selected-cells-store', 'data')]
     )
     def update_group_labels(selected_column, selected_cells):
@@ -1133,52 +1240,85 @@ def single_cell_callbacks(app, adata, prefix):
         )
         return fig
     
+    # New callback for mode explanation
     @app.callback(
-        Output(f'{prefix}-p-value-method', 'options'),
-        Output(f'{prefix}-p-value-method', 'value'),
-        Input(f'{prefix}-p-value-selection', 'value'),
-        Input(f'{prefix}-multi-class-selection', 'value'),
-        Input(f'{prefix}-binary-selection', 'value')
+        Output(f'{prefix}-mode-explanation', 'children'),
+        Input(f'{prefix}-mode-selection', 'value')
     )
-    def update_p_value_method(comparison_mode, groupby_col, hue_col):
-        if comparison_mode == 'within':
-            # Within group: compare hues within each group
-            n_hues = len(adata.obs[hue_col].unique()) if hue_col else 0
-            if n_hues == 2:
-                options = [
-                    {'label': 'Mann-Whitney U Test', 'value': 'mwu-test'},
-                    {'label': 'T-test', 'value': 'ttest'},
-                    {'label': 'Two-way ANOVA', 'value': 'two-way-anova'}
+    def update_mode_explanation(mode):
+        explanations = {
+            'mode1': "Compare expression across groups in meta1 only. Meta2 will be ignored.",
+            'mode2': "Create facets by meta1, compare meta2 groups within each facet.",
+            'mode3': "Linear model treating meta2 as a confounder: expression ~ meta1 + meta2",
+            'mode4': "Mixed model treating meta2 as random effect: expression ~ meta1 + (1|meta2)"
+        }
+        return explanations.get(mode, "")
+    
+    # New callback to update meta2 options based on mode
+    @app.callback(
+        Output(f'{prefix}-meta2-selection', 'disabled'),
+        Input(f'{prefix}-mode-selection', 'value')
+    )
+    def update_meta2_state(mode):
+        return mode == 'mode1'  # Disable meta2 for mode1
+    
+    # New callback to filter test methods based on mode
+    @app.callback(
+        Output(f'{prefix}-test-method-selection', 'options'),
+        Output(f'{prefix}-test-method-selection', 'value'),
+        [Input(f'{prefix}-mode-selection', 'value'),
+         Input(f'{prefix}-meta1-selection', 'value'),
+         Input(f'{prefix}-meta2-selection', 'value')]
+    )
+    def update_test_methods(mode, meta1, meta2):
+        # Always include auto and none
+        base_options = [
+            {'label': 'Auto (recommended)', 'value': 'auto'},
+            {'label': 'None', 'value': 'none'}
+        ]
+        
+        if mode == 'mode1':
+            # Count meta1 levels
+            n_levels = len(adata.obs[meta1].unique()) if meta1 else 0
+            if n_levels == 2:
+                options = base_options + [
+                    {'label': 'Mann-Whitney U', 'value': 'mwu-test'},
+                    {'label': 'T-test', 'value': 'ttest'}
                 ]
-                value = 'mwu-test'
             else:
-                options = [
+                options = base_options + [
                     {'label': 'Kruskal-Wallis', 'value': 'kw-test'},
-                    {'label': 'ANOVA', 'value': 'anova'},
-                    {'label': 'Two-way ANOVA', 'value': 'two-way-anova'}
+                    {'label': 'ANOVA', 'value': 'anova'}
                 ]
-                value = 'kw-test'
-        elif comparison_mode == 'between':
-            # Between group: compare groups within each hue
-            n_groups = len(adata.obs[groupby_col].unique()) if groupby_col else 0
-            if n_groups == 2:
-                options = [
-                    {'label': 'Mann-Whitney U Test', 'value': 'mwu-test'},
-                    {'label': 'T-test', 'value': 'ttest'},
-                    {'label': 'Two-way ANOVA', 'value': 'two-way-anova'}
-                ]
-                value = 'mwu-test'
+        
+        elif mode == 'mode2':
+            # Count meta2 levels
+            if meta2 and meta2 != 'none':
+                n_levels = len(adata.obs[meta2].unique())
+                if n_levels == 2:
+                    options = base_options + [
+                        {'label': 'Mann-Whitney U', 'value': 'mwu-test'},
+                        {'label': 'T-test', 'value': 'ttest'}
+                    ]
+                else:
+                    options = base_options + [
+                        {'label': 'Kruskal-Wallis', 'value': 'kw-test'},
+                        {'label': 'ANOVA', 'value': 'anova'}
+                    ]
             else:
-                options = [
-                    {'label': 'Kruskal-Wallis', 'value': 'kw-test'},
-                    {'label': 'ANOVA', 'value': 'anova'},
-                    {'label': 'Two-way ANOVA', 'value': 'two-way-anova'}
-                ]
-                value = 'kw-test'
-        else:
-            options = [{'label': 'None', 'value': 'none'}]
-            value = 'none'
-        return options, value
+                options = base_options
+        
+        elif mode == 'mode3':
+            options = base_options + [
+                {'label': 'Linear Model', 'value': 'linear-model'}
+            ]
+        
+        elif mode == 'mode4':
+            options = base_options + [
+                {'label': 'Mixed Model', 'value': 'mixed-model'}
+            ]
+        
+        return options, 'auto'
     
     @app.callback(
         Output(f'{prefix}-violin2-gene-selection', 'options'),
@@ -1194,37 +1334,39 @@ def single_cell_callbacks(app, adata, prefix):
     @app.callback(
         Output(f'{prefix}-violin-plot2', 'figure'),
         [Input(f'{prefix}-violin2-gene-selection', 'value'),
-         Input(f'{prefix}-multi-class-selection', 'value'),
-         Input(f'{prefix}-binary-selection', 'value'),
-         Input(f'{prefix}-p-value-selection', 'value'),
-         Input(f'{prefix}-p-value-method', 'value'),
+         Input(f'{prefix}-meta1-selection', 'value'),
+         Input(f'{prefix}-meta2-selection', 'value'),
+         Input(f'{prefix}-mode-selection', 'value'),
+         Input(f'{prefix}-test-method-selection', 'value'),
          Input(f'{prefix}-show-box2', 'value'),
          Input(f'{prefix}-show-scatter2', 'value'),
          Input(f'{prefix}-violin2-log-or-zscore', 'value'),
-         Input(f'{prefix}-violin2-group-selection', 'value')]
+         Input(f'{prefix}-violin2-group-selection', 'value'),
+         Input(f'{prefix}-selected-cells-store', 'data')]
     )
-    def update_violin2(violin_gene_selection, multi_annotation, binary_annotation, 
-                       comparison_mode, p_value_method, show_box2, show_points, 
-                       transformation, labels):
-        # Determine comparison mode
-        if comparison_mode == 'None':
-            p_value = None
-            comp_mode = 'within'  # default
-        else:
-            p_value = None if p_value_method == 'none' else p_value_method
-            comp_mode = comparison_mode
+    def update_violin2(gene_selection, meta1, meta2, mode, test_method,
+                       show_box2, show_points, transformation, labels, selected_cells):
+        # Filter data if cells are selected
+        filtered_adata = adata[selected_cells] if selected_cells else adata
+        
+        # Handle meta2 for mode1
+        if mode == 'mode1':
+            meta2 = None
+        elif meta2 == 'none':
+            meta2 = None
             
-        return plot_violin2(
-            adata,
-            key=violin_gene_selection,
-            groupby=multi_annotation,
-            hue=binary_annotation,
+        return plot_violin2_new(
+            filtered_adata,
+            key=gene_selection,
+            meta1=meta1,
+            meta2=meta2,
+            mode=mode,
             transformation=transformation,
             show_box='show' in show_box2 if show_box2 else False,
             show_points='show' in show_points if show_points else False,
-            p_value=p_value,
+            test_method=test_method,
             labels=labels,
-            comparison_mode=comp_mode
+            color_map=None
         )
     
     @app.callback(
@@ -1233,7 +1375,6 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-single-cell-annotation-dropdown', 'value'),
          Input(f'{prefix}-single-cell-label-selection', 'value'),
          Input(f'{prefix}-plot-type-switch', 'value'),
-         Input(f'{prefix}-aggregation-type', 'value'),
         Input(f'{prefix}-dotplot-log-or-zscore', 'value'),
          Input(f'{prefix}-dotplot-standardization', 'value'),
          Input(f'{prefix}-dotmatrix-color-map-dropdown', 'value'),
@@ -1241,7 +1382,7 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-single-cell-tabs', 'value')],  # Add tab for lazy loading
         [State(f'{prefix}-dotplot', 'figure')]  # Keep current figure
     )
-    def update_dotplot(selected_genes, selected_annotation, selected_labels, plot_type, aggregation_type, 
+    def update_dotplot(selected_genes, selected_annotation, selected_labels, plot_type,
                        transformation, standardization, color_map, selected_cells, active_tab, current_figure):
         # Lazy loading: only update if this tab is active
         if active_tab != 'dotplot-tab':
@@ -1256,7 +1397,7 @@ def single_cell_callbacks(app, adata, prefix):
                 selected_genes,
                 selected_annotation,
                 selected_labels,
-                aggregation=aggregation_type,
+                aggregation='mean',  # Default to mean aggregation
                 transformation=transformation,
                 standardization=standardization,
                 color_map=color_map,
@@ -1270,41 +1411,134 @@ def single_cell_callbacks(app, adata, prefix):
                 selected_genes,
                 selected_annotation,
                 selected_labels,
-                aggregation=aggregation_type,
+                aggregation='mean',  # Default to mean aggregation
                 transformation=transformation,
                 standardization=standardization,
                 color_map=color_map,
                 plot_type=plot_type
             )
     
+    # Callback to populate x-axis groups draggable grid based on x-axis metadata selection
+    @app.callback(
+        [Output(f'{prefix}-x-axis-draggable-grid', 'children'),
+         Output(f'{prefix}-x-axis-groups-state', 'data')],
+        [Input(f'{prefix}-x-meta-dropdown', 'value'),
+         Input(f'{prefix}-single-cell-label-selection', 'value'),
+         Input(f'{prefix}-single-cell-tabs', 'value')],
+        [State(f'{prefix}-single-cell-annotation-dropdown', 'value'),
+         State(f'{prefix}-x-axis-groups-state', 'data')]
+    )
+    def update_x_axis_groups_grid(x_meta, selected_labels, active_tab, y_meta, current_state):
+        if active_tab != 'stacked-bar-tab' or not x_meta:
+            return [], {}
+        
+        # Get unique values from the selected x-axis metadata column
+        x_values = sorted(adata.obs[x_meta].unique())
+        
+        # If selected_labels are provided and we want to filter by them
+        # Only filter when x_meta matches the left control annotation
+        if selected_labels and len(selected_labels) < len(x_values):
+            # Check if selected labels are a subset of x_values
+            if set(selected_labels).issubset(set(x_values)):
+                x_values = selected_labels
+        
+        # Convert to strings for consistency
+        x_values = [str(val) for val in x_values]
+        
+        # Initialize state for new values
+        if not current_state:
+            current_state = {}
+        
+        # Update state to include all values (default to enabled)
+        new_state = {}
+        for val in x_values:
+            new_state[val] = current_state.get(val, True)
+        
+        # Create draggable items
+        items = []
+        for i, value in enumerate(x_values):
+            is_enabled = new_state.get(value, True)
+            # Create the item content
+            items.append(
+                html.Div([
+                    html.Div(value, 
+                            style={
+                                'fontWeight': 'bold',
+                                'marginBottom': '5px',
+                                'color': '#000' if is_enabled else '#999'
+                            }),
+                    dbc.Switch(
+                        id={'type': f'{prefix}-x-group-switch', 'index': value},
+                        value=is_enabled,
+                        style={'marginTop': '5px'}
+                    )
+                ], 
+                key=f'x-group-{value}',
+                style={
+                    'padding': '10px',
+                    'backgroundColor': '#fff' if is_enabled else '#f5f5f5',
+                    'border': '2px solid #007bff' if is_enabled else '1px solid #ddd',
+                    'borderRadius': '5px',
+                    'textAlign': 'center',
+                    'cursor': 'move',
+                    'height': '100%'
+                })
+            )
+        
+        if not items:
+            items = [html.Div("No groups available", 
+                            key='empty-msg',
+                            style={'color': '#6c757d', 'fontStyle': 'italic', 'padding': '20px'})]
+        
+        return items, new_state
+    
+    # Callback to handle toggle switches
+    @app.callback(
+        Output(f'{prefix}-x-axis-groups-state', 'data', allow_duplicate=True),
+        [Input({'type': f'{prefix}-x-group-switch', 'index': ALL}, 'value')],
+        [State({'type': f'{prefix}-x-group-switch', 'index': ALL}, 'id'),
+         State(f'{prefix}-x-axis-groups-state', 'data')],
+        prevent_initial_call=True
+    )
+    def update_group_state(switch_values, switch_ids, current_state):
+        if not switch_ids:
+            return current_state
+        
+        new_state = current_state.copy() if current_state else {}
+        
+        for i, switch_id in enumerate(switch_ids):
+            if 'index' in switch_id:
+                group_name = switch_id['index']
+                new_state[group_name] = switch_values[i]
+        
+        return new_state
+    
+    
+    # Stacked bar plot callback
     @app.callback(
         Output(f'{prefix}-stacked-bar-plot', 'figure'),
-        [Input(f'{prefix}-x-meta', 'value'),
-         Input(f'{prefix}-y-meta', 'value'),
-         Input(f'{prefix}-norm-box', 'value'),
+        [Input(f'{prefix}-norm-box', 'value'),
          Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
          Input(f'{prefix}-selected-cells-store', 'data'),
-         Input(f'{prefix}-single-cell-tabs', 'value')],  # Add tab for lazy loading
-        [State(f'{prefix}-stacked-bar-plot', 'figure')]  # Keep current figure
+         Input(f'{prefix}-single-cell-tabs', 'value'),
+         Input(f'{prefix}-single-cell-annotation-dropdown', 'value'),
+         Input(f'{prefix}-single-cell-label-selection', 'value'),
+         Input(f'{prefix}-stacked-bar-x-axis', 'value')],
+        [State(f'{prefix}-stacked-bar-plot', 'figure')]
     )
-    def update_stacked_bar(x_meta, y_meta, norm, discrete_color_map, selected_cells, active_tab, current_figure):
+    def update_stacked_bar(norm, discrete_color_map, selected_cells, active_tab, 
+                          annotation, selected_labels, x_axis_meta, current_figure):
         # Lazy loading: only update if this tab is active
         if active_tab != 'stacked-bar-tab':
             return current_figure if current_figure else go.Figure()
         
-        # Check if only one metadata column is available
-        unique_counts = adata.obs.nunique()
-        discrete_columns = unique_counts[unique_counts < 100].index.tolist()
-        
-        if len(discrete_columns) < 2:
-            # Create an empty figure with a message
+        if not annotation or not x_axis_meta:
+            # Return empty figure with message
             fig = go.Figure()
             fig.add_annotation(
-                text="Stacked bar plot requires at least 2 metadata columns.<br>Current dataset has only 1 metadata column.",
-                xref="paper",
-                yref="paper",
-                x=0.5,
-                y=0.5,
+                text="Please select both annotation (for stacking) and x-axis metadata",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
                 showarrow=False,
                 font=dict(size=14),
                 xanchor="center",
@@ -1318,49 +1552,34 @@ def single_cell_callbacks(app, adata, prefix):
             )
             return fig
         
-        if x_meta == y_meta or y_meta == 'none':
-            # Create an empty figure with a message
-            fig = go.Figure()
-            fig.add_annotation(
-                text="Please select different metadata columns for X-axis and color.",
-                xref="paper",
-                yref="paper",
-                x=0.5,
-                y=0.5,
-                showarrow=False,
-                font=dict(size=14),
-                xanchor="center",
-                yanchor="middle"
-            )
-            fig.update_layout(
-                plot_bgcolor='white',
-                paper_bgcolor='white',
-                xaxis=dict(visible=False),
-                yaxis=dict(visible=False)
-            )
-            return fig
+        # Filter data
+        filtered_adata = filter_data(adata, annotation, selected_labels, selected_cells)
         
-        # Filter data if cells are selected
-        filtered_adata = adata[selected_cells] if selected_cells else adata
-        
-        # Create fixed color mapping based on ALL categories in the original dataset
-        # This ensures consistent colors even when filtering
-        all_y_categories = sorted(adata.obs[y_meta].unique())
+        # Create fixed color mapping based on annotation categories
+        all_categories = sorted(adata.obs[annotation].unique())
         
         if discrete_color_map:
             discrete_palette = palette_json["color_palettes"][discrete_color_map]
             fixed_color_map = {
                 cat: discrete_palette[i % len(discrete_palette)] 
-                for i, cat in enumerate(all_y_categories)
+                for i, cat in enumerate(all_categories)
             }
         else:
-            from guanaco.data_loader import color_config
             fixed_color_map = {
                 cat: color_config[i % len(color_config)] 
-                for i, cat in enumerate(all_y_categories)
+                for i, cat in enumerate(all_categories)
             }
         
-        return plot_stacked_bar(x_meta, y_meta, norm, filtered_adata, color_map=fixed_color_map)
+        # Use x_axis_meta for x-axis and annotation for stacking (y_meta)
+        return plot_stacked_bar(
+            x_meta=x_axis_meta,  # From the dropdown in the stacked bar tab
+            y_meta=annotation,   # From the left control panel
+            norm=norm, 
+            adata=filtered_adata, 
+            color_map=fixed_color_map,
+            y_order=selected_labels  # Order from Select Labels in left control
+        )
+    
     
     # Pseudotime plot callback
     @app.callback(

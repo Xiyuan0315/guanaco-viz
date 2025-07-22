@@ -3,48 +3,29 @@ import dash_bootstrap_components as dbc
 import dash_draggable
 from guanaco.config import common_config
 
-def generate_stacked_bar_layout(discrete_label_list,prefix):
+def generate_stacked_bar_layout(discrete_label_list, prefix):
+    """
+    Generate layout for stacked bar plot.
     
-    # For single metadata, adjust the label
-    if len(discrete_label_list) == 1:
-        x_label = "Metadata:"
-    else:
-        x_label = "Cell info 1(X-axis):"
-
-    x_meta_dropdown = html.Div([
-        html.Label(x_label, style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+    Arguments:
+        discrete_label_list: List of discrete metadata columns
+        prefix: Unique ID prefix for this instance
+    """
+    
+    # Dropdown to select x-axis metadata
+    x_axis_dropdown = html.Div([
+        html.Label("Cell info (x-axis):", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
         dcc.Dropdown(
-            id=f'{prefix}-x-meta',
+            id=f'{prefix}-stacked-bar-x-axis',
             options=[{'label': meta, 'value': meta} for meta in discrete_label_list],
-            value=discrete_label_list[0],
+            value=discrete_label_list[0] if discrete_label_list else None,
             clearable=False,
-            style={'marginBottom': '15px'},
-            disabled=(len(discrete_label_list) == 1)  # Disable if only one option
+            placeholder="Select metadata for x-axis",
+            style={'marginBottom': '15px'}
         )
-    ], style={'flex': '1'})
-
-    # Handle case when only one metadata column exists
-    if len(discrete_label_list) > 1:
-        y_options = [{'label': meta, 'value': meta} for meta in discrete_label_list]
-        y_value = discrete_label_list[1]
-        y_disabled = False
-    else:
-        y_options = [{'label': 'N/A - Single metadata mode', 'value': 'none'}]
-        y_value = 'none'
-        y_disabled = True
+    ], style={'marginBottom': '15px'})
     
-    y_meta_dropdown = html.Div([
-        html.Label("Cell info 2(colour by):", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-        dcc.Dropdown(
-            id=f'{prefix}-y-meta',
-            options=y_options,
-            value=y_value,
-            clearable=False,
-            style={'marginBottom': '15px'},
-            disabled=y_disabled
-        )
-    ], style={'flex': '1'})
-
+    # Normalization option
     norm_box = html.Div([
         html.Label("Plot value:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
         dbc.RadioItems(
@@ -56,9 +37,10 @@ def generate_stacked_bar_layout(discrete_label_list,prefix):
             value='prop',
             inline=True
         )
-    ], {'padding': '20px'})
-    draggable_bar = html.Div([
-    dash_draggable.GridLayout(
+    ], style={'marginBottom': '15px'})
+    
+    # Draggable stacked bar plot
+    draggable_bar = dash_draggable.GridLayout(
         id=f'{prefix}-draggable',
         className='grid-layout-no-border',
         children=[
@@ -68,7 +50,7 @@ def generate_stacked_bar_layout(discrete_label_list,prefix):
                     config=common_config,
                     responsive=True,
                     style={
-                        "min-height": "0",
+                        "min-height": "400px",
                         "flex-grow": "1",
                     }
                 )
@@ -86,18 +68,24 @@ def generate_stacked_bar_layout(discrete_label_list,prefix):
         height=30,
         gridCols=12,
     )
-])
-
-
+    
+    # Info text
+    info_text = html.Div([
+        html.P([
+            html.I(className="fas fa-info-circle", style={'marginRight': '5px'}),
+            "The stacked layers come from 'Select Annotation' and 'Select Labels' in the left control panel"
+        ], style={'color': '#6c757d', 'fontSize': '14px', 'marginBottom': '15px'})
+    ])
+    
+    # Final layout
     bar_layout = html.Div([
-        html.Div(
-            [x_meta_dropdown, y_meta_dropdown],
-            style={'display': 'flex', 'justify-content': 'space-between'}
-        ),
+        info_text,
+        x_axis_dropdown,
         norm_box,
         draggable_bar
-    ], style={'padding': '20px',
-               'marginBottom': '15px',
-               })
+    ], style={
+        'padding': '20px',
+        'marginBottom': '15px',
+    })
 
     return bar_layout

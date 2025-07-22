@@ -32,23 +32,6 @@ def generate_dotplot_layout(prefix):
         )
     ])
 
-    # --- Aggregation type selection ---
-    aggregation_selection = html.Div([
-        html.Label(
-            'Aggregation Type:',
-            style={'fontWeight': 'bold', 'marginBottom': '5px'}
-        ),
-        dbc.RadioItems(
-            id=f'{prefix}-aggregation-type',
-            options=[
-                {'label': 'Mean', 'value': 'mean'},
-                {'label': 'Median', 'value': 'median'}
-            ],
-            value='mean',
-            inline=True,
-            style={'marginBottom': '10px'}
-        )
-    ])
 
     # --- Transformation selection ---
     dotplot_transformation_selection = html.Div([
@@ -60,8 +43,7 @@ def generate_dotplot_layout(prefix):
             id=f'{prefix}-dotplot-log-or-zscore',
             options=[
                 {'label': 'None', 'value': 'None'},
-                {'label': 'Log', 'value': 'log'},
-                {'label': 'Z-score (across cell)', 'value': 'z_score'}
+                {'label': 'Log', 'value': 'log'}
             ],
             value='log',
             inline=True,
@@ -148,7 +130,6 @@ def generate_dotplot_layout(prefix):
     dotplot_layout = html.Div([
         dotplot_transformation_selection,
         dotplot_standardization_selection,
-        aggregation_selection,
         dotmatrix_color_map_dropdown,
         plot_type_switch,
         draggable_container
