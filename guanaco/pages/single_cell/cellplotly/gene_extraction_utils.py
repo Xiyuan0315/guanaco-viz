@@ -38,7 +38,7 @@ class GeneExpressionCache:
             oldest = next(iter(self.cache))
             del self.cache[oldest]
         
-        self.cache[key] = expr.copy()
+        self.cache[key] = expr  # Store without copy
         return expr
     
     def clear(self):
