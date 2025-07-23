@@ -452,7 +452,7 @@ def scatter_layout(adata,prefix):
                     dbc.Row([
                         dbc.Col([
                             dbc.Button(
-                                "Update Other Plots with Selected Cells",
+                                "Update Plots",
                                 id=f"{prefix}-update-plots-button",
                                 color="primary",
                                 n_clicks=0,
@@ -1332,7 +1332,7 @@ def single_cell_callbacks(app, adata, prefix):
     )
     def store_selected_cells(n_clicks, selected_data, current_annotation, filtered_data):
         """Store indices of selected cells from annotation scatter plot when button is clicked"""
-        if n_clicks == 0 or not selected_data or not selected_data.get('points'):
+        if n_clicks == 0:
             return None, ""
         
         # Get the same filtered data that the scatter plot is using
@@ -1342,6 +1342,18 @@ def single_cell_callbacks(app, adata, prefix):
             plot_adata = adata[filtered_data['cell_indices']]
         else:
             plot_adata = adata
+        
+        # If no selection made, return all cells from the scatter plot
+        if not selected_data or not selected_data.get('points'):
+            all_indices = plot_adata.obs.index.tolist()
+            n_cells = len(all_indices)
+            status_msg = dbc.Alert(
+                f"✓ All {n_cells} cells from scatter plot selected. Other plots updated.",
+                color="info",
+                dismissable=True,
+                duration=4000
+            )
+            return all_indices, status_msg
         
         # Extract cell indices from selected points
         selected_points = selected_data['points']
