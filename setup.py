@@ -6,6 +6,7 @@ readme_path = os.path.join(os.path.dirname(__file__), "README.md")
 with open(readme_path, "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
+
 setup(
     name="guanaco-viz",
     version="0.1.0",
@@ -46,9 +47,12 @@ setup(
         "dash-bootstrap-components==1.3.0",
         "dash-bio==1.0.2",
         "dash-draggable",
+        "dash-ag-grid",
         "plotly>=5.19.0,<6.0.0",
         "pandas==2.1.1",
         "numpy==1.26.0",
+        "scipy>=1.9.0",
+        "statsmodels==0.14.4",
         "anndata",
         "muon==0.1.7",
         "logomaker==0.8",
@@ -58,11 +62,11 @@ setup(
         "boto3==1.35.36",
         "botocore==1.35.36",
         "s3transfer==0.10.3",
+        "urllib3==1.26.14",
         "tqdm==4.64.1",
         "python-dotenv==1.0.0",
-        "urllib3==1.26.14",
-        "statsmodels==0.14.4",
         "click",
+        "gunicorn==21.2.0",
     ],
 
     entry_points={
