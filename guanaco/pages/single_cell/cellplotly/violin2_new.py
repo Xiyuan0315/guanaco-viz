@@ -311,11 +311,13 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
     if key not in adata.var_names:
         return go.Figure()
     
-    expression_data = adata[:, key].X.toarray().flatten()
-    if transformation == 'log':
-        expression_data = np.log1p(expression_data)
-    elif transformation == 'z_score':
-        expression_data = (expression_data - expression_data.mean()) / expression_data.std()
+    # Use gene extraction utility to handle views properly
+    from .gene_extraction_utils import extract_gene_expression, apply_transformation
+    expression_data = extract_gene_expression(adata, key)
+    
+    # Apply transformation if specified
+    if transformation:
+        expression_data = apply_transformation(expression_data, transformation, copy=False)
     
     # Prepare dataframe
     df = pd.DataFrame({

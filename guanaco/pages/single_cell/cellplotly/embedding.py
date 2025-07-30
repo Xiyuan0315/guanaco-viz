@@ -506,9 +506,9 @@ def plot_coexpression_embedding(
         gene2_expr = apply_transformation(gene2_expr, transformation, copy=True)
 
     # Create categories based on thresholds
-    # Calculate percentile-based thresholds
-    gene1_threshold = np.percentile(gene1_expr, threshold1 * 100)
-    gene2_threshold = np.percentile(gene2_expr, threshold2 * 100)
+    # Use threshold values directly (they are already actual expression values from the callback)
+    gene1_threshold = threshold1
+    gene2_threshold = threshold2
     
     # Categorize cells
     gene1_expressed = gene1_expr > gene1_threshold

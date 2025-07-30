@@ -25,7 +25,10 @@ class GeneExpressionCache:
         else:
             adata_id = id(adata)
         
-        return (adata_id, gene, layer, use_raw)
+        # Include data shape to differentiate between filtered and unfiltered data
+        data_shape = adata.shape
+        
+        return (adata_id, gene, layer, use_raw, data_shape)
     
     def get(self, adata, gene, layer=None, use_raw=False):
         """Get gene expression from cache or compute if not cached."""
