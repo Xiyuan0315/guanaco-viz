@@ -16,7 +16,7 @@
 - **100+ color maps** – Choose from a wide range of continuous and discrete palettes, including options optimized for color vision deficiencies.
 - **Interactive layout** – Resize plots, reorder axes, and zoom in on details — all directly in the browser, without writing a line of code.
 
-<img width="500" height="2500" alt="figure4_v5" src="figure4_v5.png" />
+<img alt="figure4_v5" src="figure4_v5.png" />
 
 Example Interface: link
 

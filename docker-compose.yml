@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  guanaco-viz:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount your data directory (update the path)
+      - ./data:/app/data
+      # Mount your config file (update the path)
+      - ./config.json:/app/config.json
+    environment:
+      - GUANACO_CONFIG=/app/config.json
+      - GUANACO_DATA_DIR=/app/data
+      - GUANACO_MAX_CELLS=50000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Add nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - guanaco-viz
+    restart: unless-stopped
+    profiles:
+      - production
