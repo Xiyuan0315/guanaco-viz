@@ -77,7 +77,7 @@ guanaco -c config.json -d data_folder
 - `--host`: Host to run the Dash server on (default: 0.0.0.0)
 - `--debug`: Run server in debug mode
 - `--max-cells`: Maximum number of cells to load per dataset (default: 8000)
-- `--seed`: Random seed for cell subsampling
+- `--backed-mode`: Enable backed mode for memory-efficient loading of large datasets
 
 ## Configuration
 
