@@ -2,49 +2,6 @@
 
 GUANACO: Interactive visualization tool for single-cell data and genome browser
 
-## Project Structure
-
-```
-guanaco-viz/
-├── guanaco/                    # Main package directory
-│   ├── app.py                  # Dash application initialization
-│   ├── cli.py                  # Command-line interface
-│   ├── config.py               # Configuration handling
-│   ├── data_loader.py          # Data loading utilities
-│   ├── layout.py               # Main application layout
-│   ├── main.py                 # Application entry point
-│   ├── memory_utils.py         # Memory management utilities
-│   ├── progress_utils.py       # Progress tracking utilities
-│   ├── assets/                 # Static assets (CSS, images)
-│   │   ├── scientific_style.css
-│   │   ├── logo.png
-│   │   └── ...
-│   └── pages/                  # Application pages
-│       ├── browser/            # Genome browser functionality
-│       │   ├── gene_browser.py
-│       │   └── utils.py
-│       └── single_cell/        # Single-cell analysis pages
-│           ├── cellplotly/     # Plotly-based visualizations
-│           │   ├── embedding.py
-│           │   ├── heatmap1.py
-│           │   ├── heatmap2.py
-│           │   ├── violin1.py
-│           │   ├── violin2.py
-│           │   ├── dotmatrix_optimized.py
-│           │   ├── pseudotime.py
-│           │   └── stacked_bar.py
-│           ├── mod021_heatmap.py
-│           ├── mod022_violin.py
-│           ├── mod023_dotplot.py
-│           ├── mod024_stacked_bar.py
-│           ├── mod025_pseudotime.py
-│           └── single_cell_plots.py
-├── example_config.json         # Example configuration file
-├── setup.py                    # Package setup
-├── requirements.txt            # Python dependencies
-└── pixi.toml                   # Pixi package manager config
-```
-
 ## Installation
 
 ### 1. Clone the repository
@@ -89,7 +46,12 @@ Create a configuration JSON file specifying your datasets. The configuration fil
 - **Marker genes**: Gene lists for specific analyses
 
 See `example_config.json` for a complete example configuration.
-
+simpliest case for visualizing scRNA data(.h5ad) is:
+```
+{
+  "Demo": {"sc_data": "PBMC_int.h5ad"}
+}
+```
 ## Features
 
 ### Single-Cell Analysis
