@@ -2,7 +2,7 @@
 <table border="0" cellspacing="0" cellpadding="0">
   <tr>
     <td width="120" align="center" valign="top">
-      <img src="https://github.com/user-attachments/assets/dad87c04-f2ee-4e75-81e7-c95b1e2f509a" /> width="100" alt="GUANACO logo">
+      <img src="https://github.com/user-attachments/assets/dad87c04-f2ee-4e75-81e7-c95b1e2f509a" />
 
     </td>
     <td>
@@ -17,7 +17,7 @@
 - **100+ color maps** – Choose from a wide range of continuous and discrete palettes, including options optimized for color vision deficiencies.
 - **Interactive layout** – Resize plots, reorder axes, and zoom in on details — all directly in the browser, without writing a line of code.
 
-<img width="4019" height="2012" alt="figure4_v5" src="https://github.com/user-attachments/assets/32f481fd-6eef-4f41-b629-185f795aff22" />
+<img width="2000" height="1000" alt="figure4_v5" src="https://github.com/user-attachments/assets/32f481fd-6eef-4f41-b629-185f795aff22" />
 
 Example Interface: link
 
