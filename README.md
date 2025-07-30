@@ -2,7 +2,7 @@
 <table border="0" cellspacing="0" cellpadding="0">
   <tr>
     <td width="120" align="center" valign="top">
-      <img src="https://github.com/user-attachments/assets/dad87c04-f2ee-4e75-81e7-c95b1e2f509a" width="100" alt="GUANACO logo" />
+      <img src="assets/logo.png" width="100" alt="GUANACO logo" />
     </td>
     <td style="padding-left: 20px;">
       <strong>GUANACO</strong> (Graphical Unified Analysis and Navigation of Cellular Omics) is a Python-based platform that empowers biologists to explore multi-omics single-cell data directly in the browser — no coding required, just clicks.<br><br>
