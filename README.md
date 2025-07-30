@@ -5,21 +5,20 @@
       <img src="guanaco/assets/logo.png" width="100" alt="GUANACO logo" />
     </td>
     <td style="padding-left: 20px;">
-      <strong>GUANACO</strong> (Graphical Unified Analysis and Navigation of Cellular Omics) is a Python-based platform that empowers biologists to explore multi-omics single-cell data directly in the browser — no coding required, just clicks.<br><br>
-      <strong>GUANACO</strong> leverages interactive visualizations to make data exploration and figure customization effortless — fast, intuitive, and fully reproducible.
+      <strong>GUANACO</strong> (Graphical Unified Analysis and Navigation of Cellular Omics) is a Python-based platform that empowers biologists to explore multi-omics single-cell data directly in the browser with clicks<br><br>
+      <strong>GUANACO</strong> leverages interactive visualizations to make data exploration and figure customization effortless:
     </td>
   </tr>
 </table>
 
-- **Free cell selection** – Select cells with a click or lasso — define custom subpopulations as easily as drawing on paper.
-- **Perception-aware tooltips** – Prevent misinterpretation by revealing actual values behind dot sizes and color intensities, ensuring visual accuracy.
+- **Free cell selection** – Select cells with a click or lasso, define custom subpopulations as easily as drawing on paper.
+- **Perception-aware tooltips** – Prevent misinterpretation by revealing actual values behind the visualization
 - **100+ color maps** – Choose from a wide range of continuous and discrete palettes, including options optimized for color vision deficiencies.
-- **Interactive layout** – Resize plots, reorder axes, and zoom in on details — all directly in the browser, without writing a line of code.
+- **Interactive layout** – Resize plots, reorder axes, and zoom in on details all directly in the browser
 
 <img alt="figure4_v5" src="figure4_v5.png" />
 
-Example Interface: link
-
+Example Interface 👉 [Launch the interactive demo](https://your-demo-link.com)
 
 
 ## Installation
