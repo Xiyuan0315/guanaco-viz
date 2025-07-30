@@ -1,9 +1,6 @@
 # GUANACO
 GUANACO (Graphical Unified Analysis and Navigation of Cellular Omics), a Python-based platform tailored for biologists to explore multi-omics single-cell data.<img width="100" height="140" alt="logo" src="https://github.com/user-attachments/assets/d605e945-7fa1-493c-8444-536b55c15ff4" />
 
-<img width="2009" height="2252" alt="Copy of Copy of Copy of figure1_v3 (1)" src="https://github.com/user-attachments/assets/3f3b5557-4605-452e-9aea-97cda45e35fd" />
-
-
 
 ## Installation
 
