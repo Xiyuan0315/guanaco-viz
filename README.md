@@ -1,4 +1,5 @@
 # GUANACO
+![Uploading logo.png…]()
 
 GUANACO: Interactive visualization tool for single-cell data and genome browser
 
