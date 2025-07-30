@@ -3,14 +3,19 @@ import pandas as pd
 from scipy.sparse import issparse
 from functools import lru_cache
 import hashlib
+import time
+import gc
 
 
 class GeneExpressionCache:
     """Cache for gene expression data to avoid repeated extractions."""
     
-    def __init__(self, max_size=128):
+    def __init__(self, max_size=64, max_age_seconds=1800):  # Reduced to 64 items, 30-min expiration
         self.cache = {}
         self.max_size = max_size
+        self.max_age_seconds = max_age_seconds
+        self.timestamps = {}
+        self.access_order = []
         
     def _make_key(self, adata, gene, layer=None, use_raw=False):
         """Create a unique key for caching."""
@@ -25,25 +30,50 @@ class GeneExpressionCache:
     def get(self, adata, gene, layer=None, use_raw=False):
         """Get gene expression from cache or compute if not cached."""
         key = self._make_key(adata, gene, layer, use_raw)
+        current_time = time.time()
         
+        # Check if cached and not expired
         if key in self.cache:
-            return self.cache[key].copy()  # Return copy to prevent modifications
+            if current_time - self.timestamps.get(key, 0) < self.max_age_seconds:
+                # Move to end of access order
+                if key in self.access_order:
+                    self.access_order.remove(key)
+                self.access_order.append(key)
+                return self.cache[key]  # Return reference, not copy (saves memory)
+            else:
+                # Expired - remove from cache
+                del self.cache[key]
+                del self.timestamps[key]
+                if key in self.access_order:
+                    self.access_order.remove(key)
         
         # Compute if not in cache - use extract without cache to avoid recursion
         expr = extract_gene_expression(adata, gene, layer, use_raw, use_cache=False)
         
         # Add to cache with size limit
         if len(self.cache) >= self.max_size:
-            # Remove oldest entry (simple FIFO)
-            oldest = next(iter(self.cache))
-            del self.cache[oldest]
+            # Remove least recently used
+            if self.access_order:
+                lru_key = self.access_order.pop(0)
+                del self.cache[lru_key]
+                del self.timestamps[lru_key]
         
-        self.cache[key] = expr.copy()
+        self.cache[key] = expr
+        self.timestamps[key] = current_time
+        self.access_order.append(key)
+        
+        # Periodic garbage collection
+        if len(self.cache) % 20 == 0:
+            gc.collect()
+        
         return expr
     
     def clear(self):
-        """Clear the cache."""
+        """Clear the cache and free memory."""
         self.cache.clear()
+        self.timestamps.clear()
+        self.access_order.clear()
+        gc.collect()
 
 
 def extract_gene_expression(adata, gene, layer=None, use_raw=False, use_cache=True):

@@ -38,6 +38,9 @@ def plot_continuous_embedding(
 
     embedding_df[color] = gene_expression
 
+    # Add original cell indices BEFORE sorting/shuffling
+    embedding_df['_original_idx'] = np.arange(len(embedding_df))
+    
     # Sort order
     if order == 'max':
         embedding_df_sorted = embedding_df.sort_values(by=color)
@@ -51,6 +54,9 @@ def plot_continuous_embedding(
     # Add annotation if provided
     if annotation:
         embedding_df_sorted[annotation] = adata.obs[annotation].values
+
+    # Use the original indices for selection tracking (not the sorted indices)
+    embedding_df_sorted['_cell_idx'] = embedding_df_sorted['_original_idx']
 
     # Create scatter plot
     fig = go.Figure()
@@ -70,8 +76,11 @@ def plot_continuous_embedding(
                 len = 0.8
             )
         ),
-        text=embedding_df_sorted[annotation] if annotation else None,
-        hovertemplate=f'{color}: %{{marker.color:.4f}}<br><extra></extra>'
+        customdata=embedding_df_sorted['_cell_idx'],  # Add cell indices for selection
+        hoverinfo='skip',  # Disable hover
+        selectedpoints=None,  # Enable selection
+        selected=dict(marker=dict(opacity=1)),  # Keep selected points fully visible
+        unselected=dict(marker=dict(opacity=0.2))  # Dim unselected points
     ))
 
     fig.update_layout(
@@ -112,97 +121,6 @@ def plot_continuous_embedding(
     return fig
 
 
-# def plot_categorical_embedding(
-#     adata, gene, embedding_key, color, x_axis=None, y_axis=None,
-#     color_map=None, marker_size=5, opacity=1, legend_show='on legend',
-#     axis_show=True
-# ):
-#     """
-#     Plot a categorical variable (e.g., cell type) on a 2D embedding,
-#     optionally showing a second variable (gene expression) on hover.
-#     """
-#     embedding_prefixes = {
-#         'X_umap': 'UMAP', 'X_pca': 'PCA', 'X_tsne': 't-SNE',
-#         'X_diffmap': 'DiffMap', 'X_phate': 'PHATE', 'X_draw_graph_fa': 'FA'
-#     }
-#     on_data = legend_show == 'on data'
-#     embedding_data = adata.obsm[embedding_key]
-#     prefix = embedding_prefixes.get(embedding_key, embedding_key.upper())
-#     dims = [f'{prefix}{i + 1}' for i in range(embedding_data.shape[1])]
-
-#     x_axis = x_axis or dims[0]
-#     y_axis = y_axis or (dims[1] if len(dims) > 1 else dims[0])
-
-#     df = pd.DataFrame(embedding_data, columns=dims)
-#     df[color] = adata.obs[color].values
-#     if hasattr(adata[:, gene].X, 'toarray'):
-    #     df[gene] = adata[:, gene].X.toarray().flatten()
-    # else:
-    #     df[gene] = adata[:, gene].X.flatten()
-
-#     unique_labels = sorted(df[color].unique())
-#     color_map = color_map or px.colors.qualitative.Plotly
-#     label_to_color = {label: color_map[i % len(color_map)] for i, label in enumerate(unique_labels)}
-
-#     fig = go.Figure()
-
-#     for label in unique_labels:
-#         mask = df[color] == label
-#         fig.add_trace(go.Scattergl(
-#             x=df.loc[mask, x_axis],
-#             y=df.loc[mask, y_axis],
-#             mode='markers',
-#             marker=dict(size=marker_size, color=label_to_color[label], opacity=opacity),
-#             name=str(label),
-#             customdata=np.stack([df.loc[mask, color], df.loc[mask, gene]], axis=-1),
-#             hovertemplate=f'{color}: %{{customdata[0]}}<br>{gene}: %{{customdata[1]:.2f}}<extra></extra>',
-#             showlegend=not on_data
-#         ))
-
-#     # Optional: add category labels on the plot
-#     if on_data:
-#         for label in unique_labels:
-#             mask = df[color] == label
-#             median_x = df.loc[mask, x_axis].median()
-#             median_y = df.loc[mask, y_axis].median()
-#             fig.add_annotation(
-#                 x=median_x, y=median_y,
-#                 text=f'<b>{label}</b>',
-#                 showarrow=False,
-#                 font=dict(size=12, color='black'),
-#                 xanchor='center', yanchor='middle', opacity=0.9
-#             )
-
-#     fig.update_layout(
-#         plot_bgcolor='white',
-#         paper_bgcolor='white',
-#         title=dict(
-#             text=f'<b>{color}</b>',
-#             x=0.5,
-#             y=0.9,
-#             xanchor='center'
-#         ),
-#         xaxis=dict(
-#             title=x_axis,
-#             showgrid=False,
-#             zeroline=False,
-#             scaleanchor='y',
-#             constrain='domain',
-#             tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
-#         ),
-#         yaxis=dict(
-#             title=y_axis,
-#             showgrid=False,
-#             zeroline=False,
-#             constrain='domain',
-#             tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
-#         )
-#     )
-
-#     fig.update_xaxes(showline=True, linewidth=2, linecolor='black')
-#     fig.update_yaxes(showline=True, linewidth=2, linecolor='black')
-
-#     return fig
 def plot_categorical_embedding(
     adata, gene, embedding_key, color,
     x_axis=None, y_axis=None,
@@ -270,10 +188,10 @@ def plot_categorical_embedding(
             ),
             name=str(label),
             customdata=df.loc[mask, color] if gene is None else np.stack([df.loc[mask, color], df.loc[mask, gene]], axis=-1),
-            hovertemplate=(
-                f"{color}: %{{customdata}}<extra></extra>" if gene is None else
-                f"{color}: %{{customdata[0]}}<br>{gene}: %{{customdata[1]:.2f}}<extra></extra>"
-            ),
+            hoverinfo='skip',  # Disable hover
+            selectedpoints=None,  # Enable selection
+            selected=dict(marker=dict(opacity=1)),  # Keep selected points fully visible
+            unselected=dict(marker=dict(opacity=0.2)),  # Dim unselected points
             showlegend=not on_data,
             legendgroup=str(label),  # Group traces by label
         ))
@@ -388,7 +306,6 @@ def plot_combined_embedding(
                     )
                 ),
                 text=df[annotation],
-                hovertemplate=f'{annotation}: %{{text}}<extra></extra>',
                 name='Annotation',
                 xaxis='x',
                 yaxis='y'
@@ -414,8 +331,10 @@ def plot_combined_embedding(
                         opacity=opacity,
                     ),
                     name=str(label),
-                    customdata=df.loc[mask, annotation],
-                    hovertemplate=f"{annotation}: %{{customdata}}<extra></extra>",
+                    hoverinfo='skip',  # Disable hover
+                    selectedpoints=None,  # Enable selection
+                    selected=dict(marker=dict(opacity=1)),  # Keep selected points fully visible
+                    unselected=dict(marker=dict(opacity=0.2)),  # Dim unselected points
                     showlegend=(legend_show == 'on legend'),
                     legendgroup='annotation',
                     xaxis='x',
@@ -457,8 +376,11 @@ def plot_combined_embedding(
                     len=0.8
                 )
             ),
-            hovertemplate=f'{gene}: %{{marker.color:.4f}}<extra></extra>',
             name='Gene Expression',
+            hoverinfo='skip',  # Disable hover
+            selectedpoints=None,  # Enable selection
+            selected=dict(marker=dict(opacity=1)),  # Keep selected points fully visible
+            unselected=dict(marker=dict(opacity=0.2)),  # Dim unselected points
             xaxis='x2',
             yaxis='y2'
         ))
@@ -631,16 +553,12 @@ def plot_coexpression_embedding(
                     opacity=opacity,
                 ),
                 name=category,
-                customdata=np.stack([
-                    embedding_df.loc[mask, 'gene1_expr'],
-                    embedding_df.loc[mask, 'gene2_expr']
-                ], axis=-1),
-                hovertemplate=(
-                    f'{gene1}: %{{customdata[0]:.2f}}<br>' +
-                    f'{gene2}: %{{customdata[1]:.2f}}<br>' +
-                    f'Category: {category}<extra></extra>'
-                ),
-                showlegend=(legend_show == 'right')
+                customdata=np.arange(len(adata))[mask],  # Add cell indices for selection
+                showlegend=(legend_show == 'right'),
+                hoverinfo='skip',  # Disable hover
+                selectedpoints=None,  # Enable selection
+                selected=dict(marker=dict(opacity=1)),  # Keep selected points fully visible
+                unselected=dict(marker=dict(opacity=0.2))  # Dim unselected points
             ))
 
     # Add category labels on plot if requested

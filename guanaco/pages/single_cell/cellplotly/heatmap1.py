@@ -5,7 +5,87 @@ import numpy as np
 import pandas as pd
 from guanaco.data_loader import color_config
 
-def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None, boundary=False, color_map='Viridis', groupby_label_color_map=None):
+
+def bin_cells_for_heatmap(df, gene_columns, groupby, n_bins):
+    """
+    Fast binning of cells for heatmap visualization to reduce memory usage.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        DataFrame with cells as rows, genes as columns
+    gene_columns : list
+        List of gene column names
+    groupby : str
+        Column name for cell type/group
+    n_bins : int
+        Number of bins to create
+    
+    Returns:
+    --------
+    pd.DataFrame
+        Binned dataframe with reduced number of rows
+    """
+    import time
+    start_time = time.time()
+    
+    # Pre-allocate arrays for faster processing
+    unique_groups = df[groupby].unique()
+    binned_rows = []
+    
+    # Convert gene columns to numpy for faster operations
+    gene_data = df[gene_columns].values
+    group_data = df[groupby].values
+    
+    # Process each group separately to maintain group structure
+    for group_idx, group in enumerate(unique_groups):
+        # Use boolean indexing for faster filtering
+        group_mask = group_data == group
+        group_gene_data = gene_data[group_mask]
+        n_cells_in_group = len(group_gene_data)
+        
+        if n_cells_in_group <= 10:
+            # Keep small groups as-is - add individual rows
+            for i in range(n_cells_in_group):
+                row_dict = {groupby: group}
+                for j, gene in enumerate(gene_columns):
+                    row_dict[gene] = group_gene_data[i, j]
+                binned_rows.append(row_dict)
+            continue
+        
+        # Calculate bins for this group proportionally
+        group_bins = max(1, int(n_bins * n_cells_in_group / len(df)))
+        group_bins = min(group_bins, n_cells_in_group)
+        
+        # Use numpy array slicing for faster binning
+        bin_size = n_cells_in_group // group_bins
+        
+        for i in range(group_bins):
+            start_idx = i * bin_size
+            if i == group_bins - 1:
+                # Last bin gets remaining cells
+                end_idx = n_cells_in_group
+            else:
+                end_idx = (i + 1) * bin_size
+            
+            # Fast numpy mean calculation
+            bin_gene_means = np.mean(group_gene_data[start_idx:end_idx], axis=0)
+            
+            # Create row dictionary
+            row_dict = {groupby: group}
+            for j, gene in enumerate(gene_columns):
+                row_dict[gene] = bin_gene_means[j]
+            
+            binned_rows.append(row_dict)
+    
+    # Single DataFrame creation instead of multiple concat operations
+    result_df = pd.DataFrame(binned_rows)
+    
+    elapsed_time = time.time() - start_time
+    
+    return result_df
+
+def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None, boundary=False, color_map='Viridis', groupby_label_color_map=None, max_cells=50000, n_bins=10000):
     num_genes = len(genes)
     num_labels = len(labels)
     if num_genes == 0 or num_labels == 0:
@@ -29,6 +109,9 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
             adata = adata[cell_indices]
             filtered_obs = adata.obs
             filtered_obs_names = adata.obs_names
+    
+    # Check if we need binning for large datasets
+    use_binning = len(filtered_obs) > max_cells
     
     genes = list(reversed(genes))
     # Filter out genes that don't exist in the dataset
@@ -82,7 +165,14 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
     if transformation == "log":
         gene_expression_matrix = np.log1p(gene_expression_matrix)
     elif transformation == "z_score":
-        gene_expression_matrix = (gene_expression_matrix - gene_expression_matrix.mean(axis=0)) / gene_expression_matrix.std(axis=0)
+        # Apply z-score normalization with safeguards
+        means = gene_expression_matrix.mean(axis=0)
+        stds = gene_expression_matrix.std(axis=0)
+        # Avoid division by zero - set minimum std to prevent extreme z-scores
+        stds = np.maximum(stds, 1e-8)
+        gene_expression_matrix = (gene_expression_matrix - means) / stds
+        # Clip extreme outliers to reasonable range (-5, 5)
+        gene_expression_matrix = np.clip(gene_expression_matrix, -5, 5)
 
     df = pd.DataFrame(gene_expression_matrix, columns=valid_genes, index=filtered_obs_names)
     df[groupby] = filtered_obs[groupby].values
@@ -97,13 +187,26 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
         )
     sorted_heatmap_df = heatmap_df.sort_values(groupby)
 
+    # Apply binning if needed for large datasets
+    if use_binning:
+        import warnings
+        warnings.warn(f"⏳ Processing large dataset: Binning {len(sorted_heatmap_df):,} cells into {n_bins:,} bins for optimal performance...", UserWarning)
+        binned_df = bin_cells_for_heatmap(sorted_heatmap_df, valid_genes, groupby, n_bins)
+        sorted_heatmap_df = binned_df
+
+    # Prepare label list and count of cells per group BEFORE creating matrix
+    label_list = sorted_heatmap_df[groupby].unique().tolist()
+    value_list = [sorted_heatmap_df[sorted_heatmap_df[groupby] == item].shape[0] for item in label_list]
+    
+    # Create gene matrix with memory optimization
     heatmap_gene_matrix = sorted_heatmap_df[valid_genes].values.T
     if heatmap_gene_matrix.size == 0:
         raise PreventUpdate
-
-    # Prepare label list and count of cells per group
-    label_list = sorted_heatmap_df[groupby].unique().tolist()
-    value_list = [sorted_heatmap_df[sorted_heatmap_df[groupby] == item].shape[0] for item in label_list]
+    
+    # Force garbage collection of intermediate DataFrames
+    del sorted_heatmap_df
+    import gc
+    gc.collect()
 
     # Use provided color map or create one based on all unique labels from adata_obs
     if groupby_label_color_map is None:
@@ -123,12 +226,7 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
     total_height = [heatmap_height, bar_chart_height]
     total_x_range = sum(value_list)
 
-    # Hover text for the heatmap
-    hover_text = np.array([
-        [f"Gene: {gene}<br>{groupby}: {group}<br>Expression: {expr:.2f}"
-         for group, expr in zip(sorted_heatmap_df[groupby], row)]
-        for gene, row in zip(valid_genes, heatmap_gene_matrix)
-    ])
+    # Hover text removed for performance - using hoverinfo='skip' instead
 
     fig = make_subplots(
         rows=2, cols=1,
@@ -137,22 +235,44 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
         vertical_spacing=0.02
     )
 
+    # Set colorbar range based on transformation type
+    if transformation == "z_score":
+        # For z-score, use symmetric range centered at 0
+        z_max = max(abs(heatmap_gene_matrix.min()), abs(heatmap_gene_matrix.max()))
+        zmin, zmax = -z_max, z_max
+        zmid = 0
+    else:
+        # For other transformations, use data range
+        zmin = heatmap_gene_matrix.min()
+        zmax = heatmap_gene_matrix.max() 
+        zmid = None
+    
+    colorbar_config = dict(
+        title=f'Expression({transformation})',
+        len=0.5,
+        yanchor='top',
+        y=1.0
+    )
+    
+    # Memory-efficient heatmap creation with chunking for very large matrices
+    matrix_size_mb = heatmap_gene_matrix.nbytes / (1024 * 1024)
+    
     fig.add_trace(go.Heatmap(
         z=heatmap_gene_matrix,
-        x=list(range(len(sorted_heatmap_df[groupby]))),
+        x=list(range(heatmap_gene_matrix.shape[1])),  # Use matrix shape instead of deleted df
         y=valid_genes,
         colorscale=color_map,
-        colorbar=dict(
-            title=f'Expression({transformation})',
-            len=0.5,
-            yanchor='top',
-            y=1.0
-        ),
-        text=hover_text,
-        hoverinfo='text',
-        zmin=heatmap_gene_matrix.min(),
-        zmax=heatmap_gene_matrix.max(),
+        colorbar=colorbar_config,
+        hoverinfo='skip',  # Disable hover
+        zmin=zmin,
+        zmax=zmax,
+        zmid=zmid,
     ), row=1, col=1)
+    
+    # Clear matrix from memory after plotly consumes it
+    matrix_shape = heatmap_gene_matrix.shape
+    del heatmap_gene_matrix
+    gc.collect()
 
     if boundary is not False:
         boundary_width = boundary
@@ -172,8 +292,7 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
             x=[value_list[i]],
             marker_color=color_map1[str(label)],
             name=str(label),
-            hovertext=f'{value_list[i]} ({label})',
-            hoverinfo='text',
+            hoverinfo='skip',  # Disable hover
             showlegend=False,
             orientation='h',
             width=1

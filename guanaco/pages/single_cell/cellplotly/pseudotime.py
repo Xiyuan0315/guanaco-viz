@@ -183,13 +183,7 @@ def plot_genes_in_pseudotime(adata, genes, pseudotime_key='pseudotime', groupby=
                         name=str(group),
                         legendgroup=str(group),
                         showlegend=(gene_idx == 0),  # Only show legend for first gene
-                        hovertemplate=(
-                            f'Cell: %{{customdata[0]}}<br>'
-                            f'{groupby}: {group}<br>'
-                            f'Pseudotime: %{{x:.3f}}<br>'
-                            f'{gene}: %{{y:.3f}}<extra></extra>'
-                        ),
-                        customdata=group_data[['cell_id']].values
+                        hoverinfo='skip',  # Disable hover
                     ),
                     row=row, col=1
                 )

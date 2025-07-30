@@ -2,24 +2,21 @@ import json
 from pathlib import Path
 import warnings
 import pandas as pd
+import dash
 from dash import dcc, html, Input, Output, exceptions, State, callback_context, ALL
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
-
-# Import visualization functions
 from guanaco.pages.single_cell.cellplotly.embedding import plot_categorical_embedding, plot_continuous_embedding, plot_combined_embedding, plot_coexpression_embedding
 from guanaco.pages.single_cell.cellplotly.heatmap1 import plot_heatmap1
 from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_heatmap2
 from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
-from guanaco.pages.single_cell.cellplotly.violin2 import plot_violin2
 from guanaco.pages.single_cell.cellplotly.violin2_new import plot_violin2_new
 from guanaco.pages.single_cell.cellplotly.stacked_bar import plot_stacked_bar
-from guanaco.pages.single_cell.cellplotly.dotmatrix import plot_dot_matrix
+from guanaco.pages.single_cell.cellplotly.dotmatrix_optimized import plot_dot_matrix
 from guanaco.pages.single_cell.cellplotly.pseudotime import plot_genes_in_pseudotime
 
-# Import sub-layouts
 from guanaco.pages.single_cell.mod021_heatmap import generate_heatmap_layout
 from guanaco.pages.single_cell.mod022_violin import generate_violin_layout
 from guanaco.pages.single_cell.mod023_dotplot import generate_dotplot_layout
@@ -29,7 +26,6 @@ from guanaco.pages.single_cell.mod025_pseudotime import generate_pseudotime_layo
 # Import configs
 from guanaco.config import scatter_config, gene_scatter_config
 from guanaco.data_loader import color_config
-
 warnings.filterwarnings('ignore', message='.*observed=False.*')
 
 # Load color palettes
@@ -39,7 +35,8 @@ with open(cvd_color_path, "r") as f:
 palette_names = list(palette_json["color_palettes"].keys())
 
 
-# ============= Scatter Plot Functions =============
+# ============= Scatter Plot Helper Functions =============
+# Note: The main scatter layout is now in mod020_scatter.py
 
 def initialize_scatter_components(adata):
     embedding_prefixes = {
@@ -80,9 +77,11 @@ def create_control_components(adata, prefix):
 
 
 def generate_annotation_dropdown(anno_list, prefix):
+    # Need access to adata to determine which items are genes
+    # For now, create options without gene labels - will be handled by search callback
     return dcc.Dropdown(id=f'{prefix}-annotation-dropdown', 
     options=[{'label': label, 'value': label} for label in anno_list],
-    placeholder="Search and select an annotation...", 
+    placeholder="Search annotations or genes...", 
     value = anno_list[len(anno_list)//2],
     style={'marginBottom': '15px'})
 
@@ -197,7 +196,6 @@ def create_global_metadata_filter(adata, prefix):
 def scatter_layout(adata,prefix):
 
 
-
     def create_control_components(adata):
 
         obsm_list, _, default_embedding, default_columns = initialize_scatter_components(adata)
@@ -275,7 +273,7 @@ def scatter_layout(adata,prefix):
     )
 
     color_map_discrete_dropdown = dcc.Dropdown(
-        id=f"{prefix}-scatter-discrete-color-map-dropdown",
+        id=f"{prefix}-discrete-color-map-dropdown",
         options=[{"label": name, "value": name} for name in palette_names],
         value=None,
         placeholder="Default color",
@@ -389,7 +387,11 @@ def scatter_layout(adata,prefix):
     )
 
     # Get all obs columns (both discrete and continuous)
+    # Include both metadata and a sample of genes for initial options
     anno_list = adata.obs.columns.tolist()
+    # Add first 20 genes as initial options (will be searchable for more)
+    sample_genes = adata.var_names[:20].tolist()
+    anno_list.extend(sample_genes)
 
     clustering_dropdown, coordinates_dropdowns = create_control_components(adata)
     layout = html.Div([
@@ -439,7 +441,7 @@ def scatter_layout(adata,prefix):
     dbc.Col(
         html.Div(
             [
-                html.Label("Select Annotation:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                html.Label("Select Annotation/Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
                 generate_annotation_dropdown(anno_list=anno_list),
                 dcc.Loading(
                     id=f"{prefix}-loading-annotaion-scatter",
@@ -514,7 +516,7 @@ def scatter_layout(adata,prefix):
                     id=f'{prefix}-gene2-container',
                     style={'display': 'none'}
                 ),
-                # Threshold sliders (hidden by default)
+                # Threshold sliders 
                 html.Div(
                     [
                         html.Label("Expression Thresholds:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
@@ -564,11 +566,18 @@ def scatter_layout(adata,prefix):
     return layout
 
 
-# ============= Other Plots Functions =============
-
 def filter_data(adata, annotation, selected_labels, selected_cells=None):
     if selected_cells is not None and len(selected_cells) > 0:
-        adata_filtered = adata[selected_cells]
+        try:
+            adata_filtered = adata[selected_cells]
+        except Exception as e:
+            # Try converting to list in case it's a different format
+            try:
+                selected_cells_list = list(selected_cells)
+                adata_filtered = adata[selected_cells_list]
+            except:
+                print(f"Error filtering with selected cells: {e}")
+                adata_filtered = adata
     elif selected_labels and annotation:
         # Apply label filtering
         cell_indices = adata.obs[annotation].isin(selected_labels)
@@ -623,8 +632,6 @@ def generate_left_control(default_gene_markers, label_list, prefix):
         annotation_filter,
         html.Label('Select Labels:', style={'fontWeight': 'bold', 'marginBottom': '5px'}),
         label_list_selection,
-        html.Label('Discrete ColorMap:', style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-        discrete_color_map_dropdown
     ])
 
 
@@ -750,10 +757,7 @@ def plot_categorical_embedding_with_fixed_colors(
             ),
             name=str(label),
             customdata=df.loc[mask, color] if gene is None else np.stack([df.loc[mask, color], df.loc[mask, gene]], axis=-1),
-            hovertemplate=(
-                f"{color}: %{{customdata}}<extra></extra>" if gene is None else
-                f"{color}: %{{customdata[0]}}<br>{gene}: %{{customdata[1]:.2f}}<extra></extra>"
-            ),
+            hoverinfo='skip',  # Disable hover
             showlegend=not on_data,
             legendgroup=str(label),
         ))
@@ -883,7 +887,7 @@ def plot_continuous_annotation(
             )
         ),
         customdata=np.stack([embedding_df_sorted[annotation], embedding_df_sorted['_cell_idx']], axis=-1),  # Add customdata with cell index
-        hovertemplate=f'{annotation}: %{{customdata[0]:.4f}}<br><extra></extra>',
+        hoverinfo='skip',  # Disable hover
         selectedpoints=None,  # Enable selection
         selected=dict(marker=dict(opacity=1)),  # Keep selected points fully visible
         unselected=dict(marker=dict(opacity=0.2))  # Dim unselected points
@@ -1088,9 +1092,18 @@ def single_cell_callbacks(app, adata, prefix):
     def update_annotation_dropdown(search_value):
         if not search_value:
             raise exceptions.PreventUpdate
+        
+        # Include both metadata and genes
         label_list = adata.obs.keys().to_list()
+        gene_list = adata.var_names.to_list()
+        
+        # Search in metadata first, then genes
         matching_labels = [label for label in label_list if search_value.lower() in label.lower()]
-        return [{'label': label, 'value': label} for label in matching_labels[:10]]
+        matching_genes = [gene for gene in gene_list if search_value.lower() in gene.lower()]
+        
+        # Combine results with metadata first, then genes (limited to 10 total)
+        all_matches = matching_labels + matching_genes
+        return [{'label': item, 'value': item} for item in all_matches[:10]]
     
     @app.callback(
         Output(f'{prefix}-scatter-gene-selection', 'options'),
@@ -1135,7 +1148,7 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-opacity-slider', 'value'),
          Input(f'{prefix}-scatter-legend-toggle', 'value'),
          Input(f'{prefix}-axis-toggle', 'value'),
-         Input(f'{prefix}-scatter-discrete-color-map-dropdown', 'value'),
+         Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
          Input(f'{prefix}-scatter-log-or-zscore', 'value'),  # Add for continuous transformations
          Input(f'{prefix}-plot-order', 'value'),  # Add for continuous ordering
          Input(f'{prefix}-scatter-color-map-dropdown', 'value'),  # Add for continuous color maps
@@ -1156,9 +1169,26 @@ def single_cell_callbacks(app, adata, prefix):
         else:
             plot_adata = adata
         
-        # Check if annotation is continuous or discrete (check on original adata for consistency)
-        if is_continuous_annotation(adata, annotation):
-            # Use continuous plotting
+        # Check if annotation is a gene or metadata
+        if annotation in adata.var_names:
+            # This is a gene - use continuous gene plotting
+            color_map = continuous_color_map or 'Viridis'
+            
+            fig = plot_continuous_embedding(
+                adata=plot_adata,
+                embedding_key=clustering_method,
+                color=annotation,
+                x_axis=x_axis,
+                y_axis=y_axis,
+                transformation=transformation,
+                order=order,
+                color_map=color_map,
+                marker_size=marker_size,
+                opacity=opacity,
+                axis_show=axis_show,
+            )
+        elif is_continuous_annotation(adata, annotation):
+            # Use continuous annotation plotting
             color_map = continuous_color_map or 'Viridis'
             
             fig = plot_continuous_annotation(
@@ -1320,6 +1350,74 @@ def single_cell_callbacks(app, adata, prefix):
             
         return fig
     
+    # ===== Threshold Slider Update Callback =====
+    @app.callback(
+        [Output(f'{prefix}-gene1-threshold-slider', 'min'),
+         Output(f'{prefix}-gene1-threshold-slider', 'max'),
+         Output(f'{prefix}-gene1-threshold-slider', 'value'),
+         Output(f'{prefix}-gene2-threshold-slider', 'min'),
+         Output(f'{prefix}-gene2-threshold-slider', 'max'),
+         Output(f'{prefix}-gene2-threshold-slider', 'value')],
+        [Input(f'{prefix}-scatter-gene-selection', 'value'),
+         Input(f'{prefix}-scatter-gene2-selection', 'value'),
+         Input(f'{prefix}-scatter-log-or-zscore', 'value'),
+         Input(f'{prefix}-global-filtered-data', 'data')],
+    )
+    def update_threshold_ranges(gene1, gene2, transformation, filtered_data):
+        """Update threshold slider ranges based on gene expression min/max values"""
+        # Get the appropriate dataset
+        if (filtered_data and 
+            filtered_data.get('cell_indices') is not None and 
+            filtered_data.get('n_cells', adata.n_obs) < adata.n_obs):
+            plot_adata = adata[filtered_data['cell_indices']]
+        else:
+            plot_adata = adata
+        
+        # Default values for sliders (0-1 range)
+        default_min, default_max, default_value = 0, 1, 0.5
+        
+        # Calculate ranges for gene1
+        if gene1 and gene1 in plot_adata.var_names:
+            from guanaco.pages.single_cell.cellplotly.gene_extraction_utils import extract_gene_expression, apply_transformation
+            gene1_expr = extract_gene_expression(plot_adata, gene1)
+            
+            # Apply transformation if specified
+            if transformation:
+                gene1_expr = apply_transformation(gene1_expr, transformation, copy=True)
+            
+            # Check if gene is expressed
+            if gene1_expr.max() > gene1_expr.min():
+                gene1_min = float(gene1_expr.min())
+                gene1_max = float(gene1_expr.max())
+                gene1_value = (gene1_min + gene1_max) / 2
+            else:
+                # Gene not expressed, use default range
+                gene1_min, gene1_max, gene1_value = default_min, default_max, default_value
+        else:
+            gene1_min, gene1_max, gene1_value = default_min, default_max, default_value
+        
+        # Calculate ranges for gene2
+        if gene2 and gene2 in plot_adata.var_names:
+            from guanaco.pages.single_cell.cellplotly.gene_extraction_utils import extract_gene_expression, apply_transformation
+            gene2_expr = extract_gene_expression(plot_adata, gene2)
+            
+            # Apply transformation if specified
+            if transformation:
+                gene2_expr = apply_transformation(gene2_expr, transformation, copy=True)
+            
+            # Check if gene is expressed
+            if gene2_expr.max() > gene2_expr.min():
+                gene2_min = float(gene2_expr.min())
+                gene2_max = float(gene2_expr.max())
+                gene2_value = (gene2_min + gene2_max) / 2
+            else:
+                # Gene not expressed, use default range
+                gene2_min, gene2_max, gene2_value = default_min, default_max, default_value
+        else:
+            gene2_min, gene2_max, gene2_value = default_min, default_max, default_value
+        
+        return gene1_min, gene1_max, gene1_value, gene2_min, gene2_max, gene2_value
+    
     # ===== Cell Selection Callback =====
     @app.callback(
         Output(f'{prefix}-selected-cells-store', 'data'),
@@ -1361,22 +1459,27 @@ def single_cell_callbacks(app, adata, prefix):
         # Get the actual cell indices
         selected_indices = []
         
-        # Check if this is continuous or categorical data
-        if is_continuous_annotation(plot_adata, current_annotation):
-            # For continuous data, we have a single trace with customdata containing cell indices
+        # Check if this is continuous data (including genes) or categorical data
+        if current_annotation in adata.var_names or is_continuous_annotation(plot_adata, current_annotation):
+            # For continuous data and genes - use customdata for cell indices
             for point in selected_points:
-                if 'customdata' in point and len(point['customdata']) > 1:
-                    # The second element in customdata is the cell index
-                    cell_idx = int(point['customdata'][1])
+                if 'customdata' in point:
+                    customdata = point['customdata']
+                    # Handle both single values and arrays
+                    if isinstance(customdata, (list, tuple)) and len(customdata) > 1:
+                        # The second element in customdata is the cell index (for genes with annotation data)
+                        cell_idx = int(customdata[1])
+                    else:
+                        # Single value customdata contains the cell index directly
+                        cell_idx = int(customdata)
                     selected_indices.append(plot_adata.obs.index[cell_idx])
                 else:
                     # Fallback to point number if customdata is not available
                     point_number = point.get('pointNumber', 0)
                     selected_indices.append(plot_adata.obs.index[point_number])
         else:
-            # For categorical data, use the original logic
+            # For categorical data - use customdata with category names to find cells
             for point in selected_points:
-                # The curveNumber tells us which trace (category) the point belongs to
                 curve_number = point.get('curveNumber', 0)
                 point_number = point.get('pointNumber', 0)
                 
@@ -1384,25 +1487,33 @@ def single_cell_callbacks(app, adata, prefix):
                 if curve_number == 0:
                     continue
                 
-                # Get all unique categories in order FROM THE FILTERED DATA
-                unique_categories = sorted(plot_adata.obs[current_annotation].unique())
-                
-                # Adjust curve_number to account for background trace
-                category_index = curve_number - 1
-                
-                # Check if the category index is valid
-                if category_index < 0 or category_index >= len(unique_categories):
-                    continue
-                
-                selected_category = unique_categories[category_index]
-                
-                # Get all cells in this category FROM THE FILTERED DATA
-                category_mask = plot_adata.obs[current_annotation] == selected_category
-                category_indices = plot_adata.obs.index[category_mask].tolist()
-                
-                # The point_number is the index within this category
-                if point_number < len(category_indices):
-                    selected_indices.append(category_indices[point_number])
+                if 'customdata' in point:
+                    # Get category from customdata
+                    customdata = point['customdata']
+                    if isinstance(customdata, (list, tuple)):
+                        category = customdata[0]  # Category is first element
+                    else:
+                        category = customdata
+                    
+                    # Find all cells with this category
+                    category_mask = plot_adata.obs[current_annotation] == category
+                    category_indices = plot_adata.obs.index[category_mask].tolist()
+                    
+                    # The point_number is the index within this category
+                    if point_number < len(category_indices):
+                        selected_indices.append(category_indices[point_number])
+                else:
+                    # Fallback to original logic
+                    unique_categories = sorted(plot_adata.obs[current_annotation].unique())
+                    category_index = curve_number - 1
+                    
+                    if category_index >= 0 and category_index < len(unique_categories):
+                        selected_category = unique_categories[category_index]
+                        category_mask = plot_adata.obs[current_annotation] == selected_category
+                        category_indices = plot_adata.obs.index[category_mask].tolist()
+                        
+                        if point_number < len(category_indices):
+                            selected_indices.append(category_indices[point_number])
         
         if selected_indices:
             n_selected = len(selected_indices)
@@ -1551,7 +1662,6 @@ def single_cell_callbacks(app, adata, prefix):
             # Return the current figure if it exists, otherwise return empty
             return current_figure if current_figure else go.Figure()
         
-        # Only use selected cells, not global filtering
         # When cells are selected, selected_labels will be auto-updated to match
         filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
         
@@ -1643,7 +1753,6 @@ def single_cell_callbacks(app, adata, prefix):
                 label: discrete_palette[i % len(discrete_palette)] for i, label in enumerate(unique_labels)
             }
         
-        # Filter data if cells are selected (no global filtering)
         # When cells are selected, selected_labels will be auto-updated to match
         filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
         
@@ -1673,22 +1782,13 @@ def single_cell_callbacks(app, adata, prefix):
     )
     def update_mode_explanation(mode):
         explanations = {
-            'mode1': "Compare expression across groups in meta1 only. Meta2 will be ignored.",
-            'mode2': "Create facets by meta1, compare meta2 groups within each facet.",
-            'mode3': "Linear model treating meta2 as a confounder: expression ~ meta1 + meta2",
-            'mode4': "Mixed model treating meta2 as random effect: expression ~ meta1 + (1|meta2)"
+            'mode1': "Compare expression across groups in obs1 only. Obs2 will be ignored.",
+            'mode2': "Create facets by obs1, compare obs2 groups within each facet.",
+            'mode3': "Linear model treating obs2 as a confounder: expression ~ obs1 + obs2",
+            'mode4': "Mixed model treating obs2 as random effect: expression ~ meta1 + (1|obs2)"
         }
         return explanations.get(mode, "")
     
-    # New callback to update meta2 options based on mode
-    @app.callback(
-        Output(f'{prefix}-meta2-selection', 'disabled'),
-        Input(f'{prefix}-mode-selection', 'value')
-    )
-    def update_meta2_state(mode):
-        return mode == 'mode1'  # Disable meta2 for mode1
-    
-    # New callback to filter test methods based on mode
     @app.callback(
         Output(f'{prefix}-test-method-selection', 'options'),
         Output(f'{prefix}-test-method-selection', 'value'),
@@ -1699,7 +1799,6 @@ def single_cell_callbacks(app, adata, prefix):
     def update_test_methods(mode, meta1, meta2):
         # Always include auto and none
         base_options = [
-            {'label': 'Auto (recommended)', 'value': 'auto'},
             {'label': 'None', 'value': 'none'}
         ]
         
@@ -1758,6 +1857,18 @@ def single_cell_callbacks(app, adata, prefix):
         return [{'label': label, 'value': label} for label in matching_labels[:10]]
     
     @app.callback(
+        [Output(f'{prefix}-meta2-selection', 'disabled'),
+         Output(f'{prefix}-meta2-selection', 'value')],
+        Input(f'{prefix}-mode-selection', 'value')
+    )
+    def toggle_meta2_dropdown(mode):
+        """Disable meta2 dropdown when mode1 is selected."""
+        if mode == 'mode1':
+            return True, 'none'  # Disable dropdown and set value to 'none'
+        else:
+            return False, dash.no_update  # Enable dropdown, keep current value
+    
+    @app.callback(
         Output(f'{prefix}-violin-plot2', 'figure'),
         [Input(f'{prefix}-violin2-gene-selection', 'value'),
          Input(f'{prefix}-meta1-selection', 'value'),
@@ -1772,9 +1883,6 @@ def single_cell_callbacks(app, adata, prefix):
     )
     def update_violin2(gene_selection, meta1, meta2, mode, test_method,
                        show_box2, show_points, transformation, labels, selected_cells):
-        # Apply filtering using filter_data function (no global filtering)
-        # Note: violin2 doesn't use annotation-based filtering, so pass None for annotation and selected_labels
-        # But we still want to filter by selected cells if they exist
         if selected_cells:
             filtered_adata = filter_data(adata, None, None, selected_cells)
         else:
@@ -1789,6 +1897,10 @@ def single_cell_callbacks(app, adata, prefix):
             meta2 = None
         elif meta2 == 'none':
             meta2 = None
+            
+        # Prevent update when obs2 is None and analysis mode requires obs2 (mode2-4)
+        if mode in ['mode2', 'mode3', 'mode4'] and meta2 is None:
+            raise PreventUpdate
             
         return plot_violin2_new(
             filtered_adata,
@@ -1839,8 +1951,6 @@ def single_cell_callbacks(app, adata, prefix):
                 plot_type=plot_type
             )
         else:
-            # For small datasets, use the filtered approach (no global filtering)
-            # When cells are selected, selected_labels will be auto-updated to match
             filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
             return plot_dot_matrix(
                 filtered_adata,
@@ -2046,11 +2156,8 @@ def single_cell_callbacks(app, adata, prefix):
             )
             return fig
         
-        # Filter data (no global filtering)
-        # When cells are selected, selected_labels will be auto-updated to match
         filtered_adata = filter_data(adata, annotation, selected_labels, selected_cells)
         
-        # Handle x-axis ordering - use column order from AgGrid or default to sorted
         if x_axis_order and len(x_axis_order) > 0:
             # Use the order from dragged columns
             final_x_order = x_axis_order

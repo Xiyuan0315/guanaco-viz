@@ -5,8 +5,54 @@ import pandas as pd
 import plotly.express as px
 
 
+def bin_cells_for_heatmap_continuous(df, gene_columns, groupby, continuous_key, n_bins):
+    """Fast binning for heatmap2 with continuous ordering."""
+    import time
+    start_time = time.time()
+    
+    # Sort by continuous key first
+    df_sorted = df.sort_values(continuous_key)
+    n_cells = len(df_sorted)
+    
+    # Calculate bin size
+    bin_size = max(1, n_cells // n_bins)
+    
+    binned_rows = []
+    gene_data = df_sorted[gene_columns].values
+    group_data = df_sorted[groupby].values
+    continuous_data = df_sorted[continuous_key].values
+    
+    for i in range(0, n_cells, bin_size):
+        end_idx = min(i + bin_size, n_cells)
+        
+        # Average expressions and continuous values
+        bin_gene_means = np.mean(gene_data[i:end_idx], axis=0)
+        bin_continuous_mean = np.mean(continuous_data[i:end_idx])
+        
+        # Use most frequent group in bin
+        bin_groups = group_data[i:end_idx]
+        from collections import Counter
+        most_common_group = Counter(bin_groups).most_common(1)[0][0]
+        
+        # Create row
+        row_dict = {
+            groupby: most_common_group,
+            continuous_key: bin_continuous_mean
+        }
+        for j, gene in enumerate(gene_columns):
+            row_dict[gene] = bin_gene_means[j]
+        
+        binned_rows.append(row_dict)
+    
+    result_df = pd.DataFrame(binned_rows)
+    elapsed_time = time.time() - start_time
+    print(f"Heatmap2 binning completed in {elapsed_time:.2f} seconds: {len(df)} cells -> {len(result_df)} bins")
+    
+    return result_df
+
+
 def plot_heatmap2_continuous(adata, genes, groupby1, continuous_key, labels=None, log=False, z_score=False, 
-                           color_map='Viridis', groupby1_label_color_map=None):
+                           color_map='Viridis', groupby1_label_color_map=None, max_cells=50000, n_bins=10000):
     """
     Simplified heatmap for continuous secondary annotation (e.g., pseudotime).
     Orders cells by the continuous value and shows primary annotation as colored bars below.
@@ -107,8 +153,7 @@ def plot_heatmap2_continuous(adata, genes, groupby1, continuous_key, labels=None
             y=1,
             yanchor='top'
         ),
-        text=hover_text,
-        hoverinfo='text',
+        hoverinfo='skip',  # Disable hover
         zmin=heatmap_gene_matrix.min(),
         zmax=heatmap_gene_matrix.max(),
     )
@@ -391,8 +436,7 @@ def plot_heatmap2(adata, genes, groupby1, groupby2, labels=None, log=False, z_sc
             y=1,    
             yanchor='top'
         ),
-        text=hover_text,
-        hoverinfo='text',
+        hoverinfo='skip',  # Disable hover
         zmin=heatmap_gene_matrix.min(),
         zmax=heatmap_gene_matrix.max(),
     )

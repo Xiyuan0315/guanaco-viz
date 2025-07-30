@@ -358,10 +358,12 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
                 box_visible=show_box,
                 points=points_mode,
                 meanline_visible=True,
+                width=0.8,
+                bandwidth=0.2,
+                spanmode='hard',
                 fillcolor=color_config[i % len(color_config)],
                 line_color='DarkSlateGrey',
                 hoveron='violins',
-                spanmode='hard',
                 jitter=0.05,
                 showlegend=False
             ))
@@ -389,12 +391,16 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
                             x=[m1_group] * len(subset),
                             y=subset['Expression'],
                             legendgroup=m2_group,
+                            width=0.8,
+                            scalemode='width',
                             scalegroup=str(m1_group),
                             name=m2_group,
                             side=side,
                             box_visible=show_box,
                             points=points_mode,
                             meanline_visible=True,
+                            bandwidth=0.2,
+                            spanmode='hard',
                             fillcolor=color_map[m2_group],
                             line_color='DarkSlateGrey',
                             hoveron='violins',
@@ -425,6 +431,7 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
                             y=subset['Expression'],
                             name=m2_group,
                             legendgroup=m2_group,
+                            width=0.8,
                             box_visible=show_box,
                             points=points_mode,
                             meanline_visible=True,
@@ -473,6 +480,7 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
                         y=subset['Expression'],
                         name=m2_group,
                         legendgroup=m2_group,
+                        width=0.8,
                         box_visible=show_box,
                         points=points_mode,
                         meanline_visible=True,
@@ -499,10 +507,7 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
         split_violin = (mode == 'mode2' and meta2 and df[meta2].nunique() == 2)
         add_p_value_annotations_new(fig, p_values, df, mode, meta1, meta2, split_violin)
     
-    # Update layout
-    # Set y-axis range to accommodate p-values
-    y_range = [0, max(df['Expression']) * 1.15] if test_method and test_method != 'none' else None
-    
+    # Shared layout updates
     fig.update_layout(
         plot_bgcolor='white',
         paper_bgcolor='white',
@@ -511,14 +516,12 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
             text=title,
             x=0.5,
             xanchor='center',
-            y=0.95,
+            y=0.9,
             font=dict(size=16, color='DarkSlateGrey')
         ),
-        yaxis=dict(
-            title='Expression',
-            range=y_range
-        ),
+        yaxis_range=[0, max(df['Expression']) * 1.1],
         xaxis_title=xaxis_title,
+        yaxis_title='Expression',
         legend=dict(
             font=dict(size=10),
             title=dict(text=meta2 if mode != 'mode1' else "", font=dict(size=12))
