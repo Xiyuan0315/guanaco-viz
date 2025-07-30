@@ -2,7 +2,8 @@
 <table border="0" cellspacing="0" cellpadding="0">
   <tr>
     <td width="120" align="center" valign="top">
-      <img src="https://github.com/user-attachments/assets/d605e945-7fa1-493c-8444-536b55c15ff4" width="100" alt="GUANACO logo">
+      <img src="https://github.com/user-attachments/assets/dad87c04-f2ee-4e75-81e7-c95b1e2f509a" /> width="100" alt="GUANACO logo">
+
     </td>
     <td>
       <strong>GUANACO</strong> (Graphical Unified Analysis and Navigation of Cellular Omics) is a Python-based platform that empowers biologists to explore multi-omics single-cell data directly in the browser with clicks.<br><br>
@@ -11,14 +12,12 @@
   </tr>
 </table>
 
-
-
 - **Free cell selection** – Select cells with a click or lasso — define custom subpopulations as easily as drawing on paper.
 - **Perception-aware tooltips** – Prevent misinterpretation by revealing actual values behind dot sizes and color intensities, ensuring visual accuracy.
 - **100+ color maps** – Choose from a wide range of continuous and discrete palettes, including options optimized for color vision deficiencies.
 - **Interactive layout** – Resize plots, reorder axes, and zoom in on details — all directly in the browser, without writing a line of code.
 
-![figure4_v5](/Users/xiyuanzhang/Downloads/figure4_v5.png)
+<img width="4019" height="2012" alt="figure4_v5" src="https://github.com/user-attachments/assets/32f481fd-6eef-4f41-b629-185f795aff22" />
 
 Example Interface: link
 
