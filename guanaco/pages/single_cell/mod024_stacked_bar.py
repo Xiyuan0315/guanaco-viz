@@ -80,7 +80,7 @@ def generate_stacked_bar_layout(discrete_label_list, prefix):
     
     # Draggable AG Grid component for x-axis ordering (will be placed after plot)
     x_axis_order_component = html.Div([
-        html.Label("X-axis group order (drag column headers to reorder):", 
+        html.Label("X-axis group order:", 
                    style={'fontWeight': 'bold', 'marginBottom': '10px'}),
         dag.AgGrid(
             id=f'{prefix}-stacked-bar-x-order-grid',

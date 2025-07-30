@@ -54,7 +54,7 @@ for name, dataset in datasets.items():
 
     # Register genome browser callbacks if genome tracks exist
     if dataset.genome_tracks is not None and dataset.ref_track is not None:
-        gene_browser_callbacks(app, dataset.genome_tracks, dataset.ref_track, dataset.name)
+        gene_browser_callbacks(app, dataset.genome_tracks, dataset.ref_track, dataset.title)
 
 # Update main content when dataset tab changes
 @app.callback(

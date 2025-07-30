@@ -85,20 +85,19 @@ def generate_violin_layout(adata, default_gene_markers,discrete_label_list,prefi
         clearable=False
     )
 
-    # Test method dropdown (with auto option)
+    # Test method dropdown
     test_method_selection = dcc.Dropdown(
         id=f'{prefix}-test-method-selection',
         options=[
-            {'label': 'Auto (recommended)', 'value': 'auto'},
+            {'label': 'None', 'value': 'none'},
             {'label': 'Mann-Whitney U', 'value': 'mwu-test'},
             {'label': 'T-test', 'value': 'ttest'},
             {'label': 'Kruskal-Wallis', 'value': 'kw-test'},
             {'label': 'ANOVA', 'value': 'anova'},
             {'label': 'Linear Model', 'value': 'linear-model'},
-            {'label': 'Mixed Model', 'value': 'mixed-model'},
-            {'label': 'None', 'value': 'none'}
+            {'label': 'Mixed Model', 'value': 'mixed-model'}
         ],
-        value='auto',
+        value='none',
         clearable=False
     )
 
@@ -151,11 +150,11 @@ def generate_violin_layout(adata, default_gene_markers,discrete_label_list,prefi
             ], style={'marginBottom': '10px'}),
             html.Div([
                 html.Div([
-                    html.Label("Meta1 (Primary):", style={'fontWeight': 'bold'}),
+                    html.Label("Obs1 (Primary):", style={'fontWeight': 'bold'}),
                     meta1_selection
                 ], style={'flex': '1'}),
                 html.Div([
-                    html.Label("Meta2 (Secondary):", style={'fontWeight': 'bold'}),
+                    html.Label("Obs2 (Secondary):", style={'fontWeight': 'bold'}),
                     meta2_selection
                 ], style={'flex': '1'}),
             ], style={'display': 'flex', 'marginBottom': '10px', 'gap': '10px'}),
