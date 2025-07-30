@@ -1,5 +1,27 @@
-# GUANACO
-GUANACO (Graphical Unified Analysis and Navigation of Cellular Omics), a Python-based platform tailored for biologists to explore multi-omics single-cell data.<img width="100" height="140" alt="logo" src="https://github.com/user-attachments/assets/d605e945-7fa1-493c-8444-536b55c15ff4" />
+# GUANACO: Intuitive Visual Exploration of Multi-Omics Data
+<table border="0" cellspacing="0" cellpadding="0">
+  <tr>
+    <td width="120" align="center" valign="top">
+      <img src="https://github.com/user-attachments/assets/d605e945-7fa1-493c-8444-536b55c15ff4" width="100" alt="GUANACO logo">
+    </td>
+    <td>
+      <strong>GUANACO</strong> (Graphical Unified Analysis and Navigation of Cellular Omics) is a Python-based platform that empowers biologists to explore multi-omics single-cell data directly in the browser with clicks.<br><br>
+      <strong>GUANACO</strong> leverages interactive visualizations to make data exploration and figure customization effortless:
+    </td>
+  </tr>
+</table>
+
+
+
+- **Free cell selection** – Select cells with a click or lasso — define custom subpopulations as easily as drawing on paper.
+- **Perception-aware tooltips** – Prevent misinterpretation by revealing actual values behind dot sizes and color intensities, ensuring visual accuracy.
+- **100+ color maps** – Choose from a wide range of continuous and discrete palettes, including options optimized for color vision deficiencies.
+- **Interactive layout** – Resize plots, reorder axes, and zoom in on details — all directly in the browser, without writing a line of code.
+
+![figure4_v5](/Users/xiyuanzhang/Downloads/figure4_v5.png)
+
+Example Interface: link
+
 
 
 ## Installation
@@ -41,19 +63,14 @@ Create a configuration JSON file specifying your datasets. See `example_config.j
   "Demo": {"sc_data": "PBMC_int.h5ad"}
 }
 ```
-## Features
+## Plot types
 
-### Single-Cell Analysis
-- **Interactive embeddings**: Linked UMAP/t-SNE visualizations with cell metadata/gene expression overlay. Select cells from embeddings to 
+**Interactive embeddings**: Linked UMAP/t-SNE visualizations with cell metadata/gene expression overlay. Select cells from embeddings to 
+
 - **Gene expression heatmaps**: Clustered heatmaps with customizable parameters
 - **Violin plots**: Distribution plots for gene expression across cell types
 - **Dot plots**: Gene expression intensity and percentage visualization
 - **Stacked bar charts**: Cell type composition analysis
 - **Pseudotime analysis**: Trajectory analysis visualization
-
-### Genome Browser
-- **ATAC-seq visualization**: Peak and track display
-- **Multi-track support**: Multiple genomic tracks in a single view
-- **Interactive navigation**: Zoom and pan
-- **Motif Database**: Jaspar database for searching
+- **Genome Browser** for track data
 
