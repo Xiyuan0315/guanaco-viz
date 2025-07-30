@@ -41,7 +41,7 @@ gene_scatter_config = {
     'doubleClick': 'reset',  # Double click to reset zoom
     'showTips': False,  # Reduce hover updates
     'frameMargins': 0,  # Reduce margin calculations
-    'modeBarButtonsToRemove': ['select', 'select2d', 'zoom2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'zoom', 'resetScale2d'],
+    'modeBarButtonsToRemove': ['lasso2d','select', 'select2d', 'zoom2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'zoom', 'resetScale2d'],
     'modeBarButtonsToAdd': []  # No selection tools, just pan and download
 }
 
