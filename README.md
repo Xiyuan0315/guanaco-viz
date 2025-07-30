@@ -2,7 +2,7 @@
 <table border="0" cellspacing="0" cellpadding="0">
   <tr>
     <td width="120" align="center" valign="top">
-      <img src="https://github.com/user-attachments/assets/dad87c04-f2ee-4e75-81e7-c95b1e2f509a" />
+      <img src="https://github.com/user-attachments/assets/dad87c04-f2ee-4e75-81e7-c95b1e2f509a"  width="100" alt="GUANACO logo" />
 
     </td>
     <td>
