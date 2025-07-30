@@ -1,5 +1,5 @@
 # GUANACO
-<img width="1024" height="1536" alt="logo" src="https://github.com/user-attachments/assets/d605e945-7fa1-493c-8444-536b55c15ff4" />
+<img width="100" height="120" alt="logo" src="https://github.com/user-attachments/assets/d605e945-7fa1-493c-8444-536b55c15ff4" />
 
 GUANACO: Interactive visualization tool for single-cell data and genome browser
 
