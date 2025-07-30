@@ -14,14 +14,11 @@ cd GUANACO_updated
 ```bash
 pip install .
 ```
-
 Or for development (editable install):
 ```bash
 pip install -e .
 ```
-
 ## Usage
-
 ```bash
 guanaco -c config.json -d data_folder
 ```
@@ -38,15 +35,7 @@ guanaco -c config.json -d data_folder
 
 ## Configuration
 
-Create a configuration JSON file specifying your datasets. The configuration file should contain:
-
-- **Dataset definitions**: Each dataset with metadata, file paths, and visualization parameters
-- **Color schemes**: Custom color palettes for visualizations
-- **ATAC-seq tracks**: Genome browser track configurations
-- **Marker genes**: Gene lists for specific analyses
-
-See `example_config.json` for a complete example configuration.
-simpliest case for visualizing scRNA data(.h5ad) is:
+Create a configuration JSON file specifying your datasets. See `example_config.json` for a complete example configuration. Simpliest case for visualizing scRNA data(.h5ad) is:
 ```
 {
   "Demo": {"sc_data": "PBMC_int.h5ad"}
@@ -55,7 +44,7 @@ simpliest case for visualizing scRNA data(.h5ad) is:
 ## Features
 
 ### Single-Cell Analysis
-- **Interactive embeddings**: UMAP/t-SNE visualizations with cell metadata overlay
+- **Interactive embeddings**: Linked UMAP/t-SNE visualizations with cell metadata/gene expression overlay. Select cells from embeddings to 
 - **Gene expression heatmaps**: Clustered heatmaps with customizable parameters
 - **Violin plots**: Distribution plots for gene expression across cell types
 - **Dot plots**: Gene expression intensity and percentage visualization
@@ -65,9 +54,6 @@ simpliest case for visualizing scRNA data(.h5ad) is:
 ### Genome Browser
 - **ATAC-seq visualization**: Peak and track display
 - **Multi-track support**: Multiple genomic tracks in a single view
-- **Interactive navigation**: Zoom and pan functionality
-- **Gene annotation**: Integrated gene model display
+- **Interactive navigation**: Zoom and pan
+- **Motif Database**: Jaspar database for searching
 
-## License
-
-MIT License
