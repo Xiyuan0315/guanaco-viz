@@ -49,7 +49,7 @@ def parse_args():
     parser.add_argument(
         "--max-cells",
         type=int,
-        default=8000,
+        default=10000,
         help="Maximum number of cells to load per dataset"
     )
     
@@ -97,7 +97,6 @@ def main():
     print(f"🌐 Server will run on {args.host}:{args.port}")
     print(f"🐛 Debug mode: {args.debug}")
     print(f"💾 Backed mode: {args.backed_mode}")
-    print(f"📊 Max cells per dataset: {args.max_cells:,}")
     print("─" * 60)
     
     start_time = time.time()

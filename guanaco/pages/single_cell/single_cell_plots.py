@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import warnings
+import numpy as np
 import pandas as pd
 import dash
 from dash import dcc, html, Input, Output, exceptions, State, callback_context, ALL
@@ -8,7 +9,7 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
-from guanaco.pages.single_cell.cellplotly.embedding import plot_categorical_embedding, plot_continuous_embedding, plot_combined_embedding, plot_coexpression_embedding
+from guanaco.pages.single_cell.cellplotly.embedding import plot_continuous_embedding, plot_coexpression_embedding
 from guanaco.pages.single_cell.cellplotly.heatmap1 import plot_heatmap1
 from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_heatmap2
 from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
@@ -350,11 +351,7 @@ def scatter_layout(adata,prefix):
         ],
         style={'display': 'none'}  # hidden by default
     )
-
-    # Get all obs columns (both discrete and continuous)
-    # Include both metadata and a sample of genes for initial options
     anno_list = adata.obs.columns.tolist()
-    # Add first 20 genes as initial options (will be searchable for more)
     sample_genes = adata.var_names[:20].tolist()
     anno_list.extend(sample_genes)
 
@@ -401,7 +398,6 @@ def scatter_layout(adata,prefix):
             xs=12, sm=12, md=4, lg=4, xl=2, 
             style={"borderRight": "1px solid #ddd", "padding": "10px"}
         ),
-    # First annotation sencond gene scatter plot
 
     dbc.Col(
         html.Div(
@@ -533,16 +529,7 @@ def scatter_layout(adata,prefix):
 
 def filter_data(adata, annotation, selected_labels, selected_cells=None):
     if selected_cells is not None and len(selected_cells) > 0:
-        try:
-            adata_filtered = adata[selected_cells]
-        except Exception as e:
-            # Try converting to list in case it's a different format
-            try:
-                selected_cells_list = list(selected_cells)
-                adata_filtered = adata[selected_cells_list]
-            except:
-                print(f"Error filtering with selected cells: {e}")
-                adata_filtered = adata
+        adata_filtered = adata[selected_cells]
     elif selected_labels and annotation:
         # Apply label filtering
         cell_indices = adata.obs[annotation].isin(selected_labels)
@@ -579,16 +566,7 @@ def generate_left_control(default_gene_markers, label_list, prefix):
         style={'marginBottom': '15px', 'font-size': '12px'},
         className='custom-dropdown'
     )
-    
-    discrete_color_map_dropdown = dcc.Dropdown(
-        id=f"{prefix}-discrete-color-map-dropdown",
-        options=[{"label": name, "value": name} for name in palette_names],
-        value=None,
-        placeholder="Default color",
-        style={"marginBottom": "15px"},
-        clearable=True,
-        className="custom-dropdown"
-    )
+
     
     return html.Div([
         html.Label('Select Variables:', style={'fontWeight': 'bold', 'marginBottom': '5px'}),
@@ -663,8 +641,6 @@ def plot_categorical_embedding_with_fixed_colors(
         for i, label in enumerate(all_unique_labels)
     }
     
-    # Now call the original function with the fixed color mapping
-    # We need to modify it to accept a dictionary instead of a list
     embedding_prefixes = {
         "X_umap": "UMAP", "X_pca": "PCA", "X_tsne": "t-SNE",
         "X_diffmap": "DiffMap", "X_phate": "PHATE", "X_draw_graph_fa": "FA"
@@ -785,8 +761,7 @@ def plot_continuous_annotation(
     Plot a continuous annotation (from obs) on a 2D embedding.
     Modified to work with obs columns instead of gene expression.
     """
-    import numpy as np
-    import pandas as pd
+
     
     embedding_prefixes = {
         'X_umap': 'UMAP', 'X_pca': 'PCA', 'X_tsne': 't-SNE',
@@ -996,7 +971,6 @@ def single_cell_callbacks(app, adata, prefix):
         n_filtered = len(filtered_indices)
         
         # Simple status message without "Filtered by:" details
-        percentage = (n_filtered / adata.n_obs) * 100
         preview_text = f"Applied: {n_filtered:,} cells selected"
         
         # Update cell count display
@@ -1176,8 +1150,6 @@ def single_cell_callbacks(app, adata, prefix):
             else:
                 color_map = palette_json["color_palettes"][discrete_color_map]
             
-            # IMPORTANT: Create a modified version of plot_categorical_embedding call
-            # that ensures color consistency by using ALL categories from original data
             fig = plot_categorical_embedding_with_fixed_colors(
                 adata=plot_adata,
                 adata_full=adata,  # Pass full adata for color reference
@@ -1214,7 +1186,6 @@ def single_cell_callbacks(app, adata, prefix):
     @app.callback(
         Output(f'{prefix}-gene-scatter', 'figure'),
         [Input(f'{prefix}-scatter-gene-selection', 'value'),
-         Input(f'{prefix}-annotation-dropdown', 'value'),
          Input(f'{prefix}-clustering-dropdown', 'value'),
          Input(f'{prefix}-x-axis', 'value'),
          Input(f'{prefix}-y-axis', 'value'),
@@ -1233,7 +1204,7 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-global-filtered-data', 'data'),  # Add global filtered data
          ]
     )
-    def update_gene_scatter(gene_name, annotation, clustering, x_axis, y_axis, transformation, order, 
+    def update_gene_scatter(gene_name, clustering, x_axis, y_axis, transformation, order, 
                            color_map, marker_size, opacity, annotation_relayout, axis_show,
                            coexpression_mode, gene2_name, threshold1, threshold2, legend_show, filtered_data):
         if not gene_name:

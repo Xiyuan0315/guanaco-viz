@@ -40,7 +40,7 @@ class DatasetBundle:
         color_config: list[str],
         adata_path: str | None = None,
         lazy_load: bool = False,
-        backed_mode: bool | str = False,
+        backed_mode: bool | str = True,
     ):
 
         self.title = title
