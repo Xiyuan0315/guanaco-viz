@@ -2,7 +2,7 @@ import plotly.graph_objs as go
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from .gene_extraction_utils import extract_gene_expression, apply_transformation, _gene_cache
+from .gene_extraction_utils import extract_gene_expression, apply_transformation
 
 
 def plot_continuous_embedding(
@@ -188,7 +188,7 @@ def plot_categorical_embedding(
             ),
             name=str(label),
             customdata=df.loc[mask, color] if gene is None else np.stack([df.loc[mask, color], df.loc[mask, gene]], axis=-1),
-            hoverinfo='skip',  # Disable hover
+            hoverinfo='skip',
             selectedpoints=None,  # Enable selection
             selected=dict(marker=dict(opacity=1)),  # Keep selected points fully visible
             unselected=dict(marker=dict(opacity=0.2)),  # Dim unselected points
@@ -305,8 +305,7 @@ def plot_combined_embedding(
                         len=0.8
                     )
                 ),
-                text=df[annotation],
-                name='Annotation',
+                    name='Annotation',
                 xaxis='x',
                 yaxis='y'
             ))
@@ -331,7 +330,7 @@ def plot_combined_embedding(
                         opacity=opacity,
                     ),
                     name=str(label),
-                    hoverinfo='skip',  # Disable hover
+                    hoverinfo='skip',
                     selectedpoints=None,  # Enable selection
                     selected=dict(marker=dict(opacity=1)),  # Keep selected points fully visible
                     unselected=dict(marker=dict(opacity=0.2)),  # Dim unselected points
@@ -377,7 +376,7 @@ def plot_combined_embedding(
                 )
             ),
             name='Gene Expression',
-            hoverinfo='skip',  # Disable hover
+            hoverinfo='skip',
             selectedpoints=None,  # Enable selection
             selected=dict(marker=dict(opacity=1)),  # Keep selected points fully visible
             unselected=dict(marker=dict(opacity=0.2)),  # Dim unselected points
@@ -555,7 +554,7 @@ def plot_coexpression_embedding(
                 name=category,
                 customdata=np.arange(len(adata))[mask],  # Add cell indices for selection
                 showlegend=(legend_show == 'right'),
-                hoverinfo='skip',  # Disable hover
+                hoverinfo='skip',
                 selectedpoints=None,  # Enable selection
                 selected=dict(marker=dict(opacity=1)),  # Keep selected points fully visible
                 unselected=dict(marker=dict(opacity=0.2))  # Dim unselected points

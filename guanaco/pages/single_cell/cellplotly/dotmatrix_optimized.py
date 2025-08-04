@@ -5,10 +5,7 @@ import pandas as pd
 from .gene_extraction_utils import extract_gene_expression, apply_transformation
 
 def plot_dot_matrix(adata, genes, groupby, selected_labels, aggregation='mean', transformation=None, standardization=None, vmin=None, vmax=None, expression_threshold=0, color_map='Viridis', plot_type='dotplot'):
-    """
-    Optimized dotplot function that processes data group by group to avoid loading all cells at once.
-    This is much more efficient for large datasets.
-    """
+    """Optimized dotplot function that processes data group by group to avoid loading all cells at once."""
     valid_genes = [gene for gene in genes if gene in adata.var_names]
     if not valid_genes:
         raise PreventUpdate

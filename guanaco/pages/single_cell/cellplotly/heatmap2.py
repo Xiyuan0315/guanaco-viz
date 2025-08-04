@@ -66,8 +66,6 @@ def plot_heatmap2_continuous(adata, genes, groupby1, continuous_key, labels=None
     # Apply binning if dataset is large
     use_binning = len(sorted_heatmap_df) > max_cells
     if use_binning:
-        import warnings
-        warnings.warn(f"⏳ Processing large dataset: Binning {len(sorted_heatmap_df):,} cells into {n_bins:,} bins for optimal performance...", UserWarning)
         sorted_heatmap_df = bin_cells_for_heatmap(sorted_heatmap_df, valid_genes, groupby1, n_bins, continuous_key=continuous_key)
     
     heatmap_gene_matrix = sorted_heatmap_df[valid_genes].values.T
@@ -93,11 +91,6 @@ def plot_heatmap2_continuous(adata, genes, groupby1, continuous_key, labels=None
         vertical_spacing=0.01
     )
     
-    # Hover text
-    hover_text = [[f"CellID: {cell_id}<br>{groupby1}: {group}<br>{continuous_key}: {cont:.4f}<br>Gene: {gene}<br>Expression: {expr:.2f}"
-                for cell_id, group, cont, expr in zip(sorted_heatmap_df['CellID'], sorted_heatmap_df[groupby1], 
-                                                      sorted_heatmap_df[continuous_key], row)]
-                for gene, row in zip(valid_genes, heatmap_gene_matrix)]
     
     # Add heatmap
     heatmap = go.Heatmap(
@@ -377,10 +370,6 @@ def plot_heatmap2(adata, genes, groupby1, groupby2, labels=None, log=False, z_sc
 
     total_x_range = sum(value_list1)
 
-    # Hovertext
-    hover_text = [[f"CellID: {cell_id}<br>{groupby1}: {group1}<br>{groupby2}: {group2}<br>Gene: {gene}<br>Expression: {expr:.2f}"
-                for cell_id, group1, group2, expr in zip(sorted_heatmap_df['CellID'], sorted_heatmap_df[groupby1], sorted_heatmap_df[groupby2], row)]
-                for gene, row in zip(valid_genes, heatmap_gene_matrix)]
 
     # Add heatmap
     heatmap = go.Heatmap(

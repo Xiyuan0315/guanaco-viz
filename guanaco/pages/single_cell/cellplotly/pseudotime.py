@@ -4,8 +4,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 from scipy.interpolate import UnivariateSpline
-import warnings
-warnings.filterwarnings('ignore')
 
 try:
     from sklearn.linear_model import Ridge
@@ -18,31 +16,7 @@ except ImportError:
 
 def plot_genes_in_pseudotime(adata, genes, pseudotime_key='pseudotime', groupby=None, 
                            min_expr=0.5, transformation='none', color_map=None):
-    """
-    Plot gene expression along pseudotime with smoothed curves, similar to Monocle 3.
-    
-    Parameters:
-    -----------
-    adata : AnnData
-        The annotated data object
-    genes : list
-        List of genes to plot
-    pseudotime_key : str
-        Key in adata.obs containing pseudotime values
-    groupby : str
-        Key in adata.obs for categorical annotation to color cells
-    min_expr : float
-        Minimum expression threshold to filter cells
-    transformation : str
-        Data transformation: 'none', 'log', 'z_score'
-    color_map : dict or None
-        Color mapping for categorical groups
-    
-    Returns:
-    --------
-    fig : plotly.graph_objects.Figure
-        The pseudotime plot figure
-    """
+    """Plot gene expression along pseudotime with smoothed curves."""
     
     # Filter out genes that don't exist in the dataset
     valid_genes = [gene for gene in genes if gene in adata.var_names]
@@ -81,7 +55,6 @@ def plot_genes_in_pseudotime(adata, genes, pseudotime_key='pseudotime', groupby=
         return fig
     
     # Extract data
-    # For backed AnnData, we need to extract data directly without creating views
     if hasattr(adata, 'isbacked') and adata.isbacked:
         # Extract gene indices for valid genes
         gene_indices = [adata.var_names.get_loc(gene) for gene in valid_genes]
@@ -91,7 +64,7 @@ def plot_genes_in_pseudotime(adata, genes, pseudotime_key='pseudotime', groupby=
         else:
             gene_expression_matrix = adata.X[:, gene_indices]
     else:
-        # Original code for non-backed AnnData
+        # Non-backed AnnData
         adata_selected = adata[:, valid_genes]
         gene_expression_matrix = adata_selected.X.toarray()
     
@@ -183,7 +156,7 @@ def plot_genes_in_pseudotime(adata, genes, pseudotime_key='pseudotime', groupby=
                         name=str(group),
                         legendgroup=str(group),
                         showlegend=(gene_idx == 0),  # Only show legend for first gene
-                        hoverinfo='skip',  # Disable hover
+                        hoverinfo='skip'
                     ),
                     row=row, col=1
                 )

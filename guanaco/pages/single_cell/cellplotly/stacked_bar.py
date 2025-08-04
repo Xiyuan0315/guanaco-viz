@@ -4,18 +4,7 @@ import pandas as pd
 from guanaco.data_loader import color_config
 
 def plot_stacked_bar(x_meta, y_meta, norm, adata, color_map=None, y_order=None, x_order=None):
-    """
-    Plot stacked bar chart.
-    
-    Arguments:
-        x_meta: Column name for x-axis groups
-        y_meta: Column name for stacked layers (color)
-        norm: 'prop' for proportions, 'count' for counts
-        adata: AnnData object
-        color_map: Color mapping dictionary or list
-        y_order: List specifying order of stacked layers (from Select Labels)
-        x_order: List specifying order of x-axis groups (from draggable dropdown)
-    """
+    """Plot stacked bar chart."""
     # Check if x_meta and y_meta are the same - if so, create a histogram
     if x_meta == y_meta:
         # Create a simple count dataframe for histogram
@@ -77,7 +66,7 @@ def plot_stacked_bar(x_meta, y_meta, norm, adata, color_map=None, y_order=None, 
             y_value = 'count'
             y_label = 'Cell Count'
     
-        # Set up color mapping - use the provided color_map to ensure consistency
+        # Set up color mapping
         if isinstance(color_map, dict):
             color_discrete_map = color_map
         elif color_map is None:
@@ -134,7 +123,6 @@ def plot_stacked_bar(x_meta, y_meta, norm, adata, color_map=None, y_order=None, 
         xaxis=dict(
             showgrid=False, 
             title_font=dict(size=18)
-            # categoryorder is handled by category_orders parameter
         ),
         yaxis=dict(showgrid=False, title_font=dict(size=18)),
         legend=dict(
@@ -145,7 +133,7 @@ def plot_stacked_bar(x_meta, y_meta, norm, adata, color_map=None, y_order=None, 
             xanchor="left",
             x=1.02
         ),
-        margin=dict(r=150)  # Make room for legend
+        margin=dict(r=150)
     )
 
     fig.update_xaxes(showline=True, linewidth=2, linecolor='black')

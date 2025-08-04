@@ -101,8 +101,6 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
 
     # Apply binning if needed for large datasets
     if use_binning:
-        import warnings
-        warnings.warn(f"⏳ Processing large dataset: Binning {len(sorted_heatmap_df):,} cells into {n_bins:,} bins for optimal performance...", UserWarning)
         binned_df = bin_cells_for_heatmap(sorted_heatmap_df, valid_genes, groupby, n_bins)
         sorted_heatmap_df = binned_df
 
@@ -115,10 +113,7 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
     if heatmap_gene_matrix.size == 0:
         raise PreventUpdate
     
-    # Force garbage collection of intermediate DataFrames
     del sorted_heatmap_df
-    import gc
-    gc.collect()
 
     # Use provided color map or create one based on all unique labels from adata_obs
     if groupby_label_color_map is None:
@@ -166,8 +161,6 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
         y=1.0
     )
     
-    # Memory-efficient heatmap creation with chunking for very large matrices
-    matrix_size_mb = heatmap_gene_matrix.nbytes / (1024 * 1024)
     
     fig.add_trace(go.Heatmap(
         z=heatmap_gene_matrix,
@@ -181,10 +174,7 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
         zmid=zmid,
     ), row=1, col=1)
     
-    # Clear matrix from memory after plotly consumes it
-    matrix_shape = heatmap_gene_matrix.shape
     del heatmap_gene_matrix
-    gc.collect()
 
     if boundary is not False:
         boundary_width = boundary

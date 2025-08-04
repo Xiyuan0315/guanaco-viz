@@ -541,6 +541,4 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
     )
     fig.update_xaxes(showline=True, linewidth=2, linecolor='black')
     
-    # Remove test description annotation to keep plot clean
-    
     return fig

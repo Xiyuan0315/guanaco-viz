@@ -8,8 +8,6 @@ from guanaco.pages.single_cell.cellplotly.gene_extraction_utils import (
     extract_gene_expression, extract_multiple_genes, apply_transformation
 )
 import hashlib
-import pickle
-from functools import lru_cache
 import time
 
 
@@ -138,24 +136,21 @@ def _extract_and_cache_violin_data(adata, genes, labels, groupby, transformation
     return cached_data
 
 def plot_violin1(adata, genes, labels, groupby, transformation=None, show_box=False, show_points=False, groupby_label_color_map=None, adata_obs=None):
-    
-    num_genes = len(genes)
-    if num_genes == 0:
+    if len(genes) == 0:
         raise PreventUpdate
     
-    # Check plot cache first for complete plot reuse
+    # Check plot cache
     adata_id = _get_adata_id(adata)
     adata_obs_id = id(adata_obs) if adata_obs is not None else None
     plot_cache_key = _create_cache_key(genes, labels, groupby, transformation, adata_id, adata_obs_id) + f"_{show_box}_{show_points}"
     
     if plot_cache_key in _violin_plot_cache:
         cached_plot = _violin_plot_cache[plot_cache_key]
-        # Update color mapping if provided
         if groupby_label_color_map:
             cached_plot = _update_plot_colors(cached_plot, groupby_label_color_map)
         return cached_plot
     
-    # Extract and cache data
+    # Extract data
     cached_data = _extract_and_cache_violin_data(adata, genes, labels, groupby, transformation)
     if cached_data is None:
         return go.Figure()
@@ -164,45 +159,33 @@ def plot_violin1(adata, genes, labels, groupby, transformation=None, show_box=Fa
     obs_values = cached_data['obs_values']
     valid_genes = cached_data['valid_genes']
     
-    # Set up color mapping - use original data for consistent colors like heatmap1
-    if adata_obs is not None:
-        # Use provided original observations for consistent color mapping
-        unique_labels = sorted(adata_obs[groupby].unique())
-    else:
-        # Fallback to current data if adata_obs not provided
-        unique_labels = sorted(adata.obs[groupby].unique())
-    
+    # Set up colors
+    unique_labels = sorted(adata_obs[groupby].unique()) if adata_obs is not None else sorted(adata.obs[groupby].unique())
     if groupby_label_color_map is None:
-        groupby_label_color_map = {
-            label: color_config[i % len(color_config)] for i, label in enumerate(unique_labels)
-        }
+        groupby_label_color_map = {label: color_config[i % len(color_config)] for i, label in enumerate(unique_labels)}
 
-    fig = make_subplots(rows=num_genes, cols=1, shared_xaxes=True, 
-                        vertical_spacing=0.02)  # No subplot titles as we add y-axis labels
+    # Create subplots
+    num_genes = len(valid_genes)
+    fig = make_subplots(rows=num_genes, cols=1, shared_xaxes=True, vertical_spacing=0.02)
 
-    # List to collect annotations for gene names
+    # Gene name annotations
     annotations = []
-    y_positions = [(i / (num_genes-1))  for i in range(num_genes)] if num_genes >1 else [0.5]
-    y_positions = y_positions[::-1]  # Reverse the list
-    # Create plot using cached data
+    y_positions = [(i / (num_genes-1)) for i in range(num_genes)] if num_genes > 1 else [0.5]
+    y_positions = y_positions[::-1]
+    
+    # Create violin plots
     for i, gene in enumerate(valid_genes):
-        gene_expression_matrix = gene_df[gene].values
-        
         df = pd.DataFrame({
-            'Expression': gene_expression_matrix,
-            groupby: obs_values,
-            'Gene': gene
+            'Expression': gene_df[gene].values,
+            groupby: obs_values
         })
 
         points_mode = 'all' if show_points else False
         grouped_data = df.groupby(groupby, observed=True)
-        
-        # Pre-calculate expression range for better performance
         expr_max = df['Expression'].max()
         
-        # for only selected labels
         for label in labels:
-            if label in grouped_data.groups:  # Check if group exists
+            if label in grouped_data.groups:
                 group_data = grouped_data.get_group(label)
                 fig.add_trace(
                     go.Violin(
@@ -212,7 +195,7 @@ def plot_violin1(adata, genes, labels, groupby, transformation=None, show_box=Fa
                         box_visible=show_box,
                         points=points_mode,
                         meanline_visible=True,
-                        showlegend=(i == 0),  # Show legend only once
+                        showlegend=(i == 0),
                         name=label,
                         spanmode='hard',
                         bandwidth=0.2,
@@ -223,44 +206,30 @@ def plot_violin1(adata, genes, labels, groupby, transformation=None, show_box=Fa
                         jitter=0.05,
                         scalemode='width',
                         scalegroup=label,
-                        marker=dict(size=2),  # Set smaller dot size
+                        marker=dict(size=2),
                     ),
                     row=i + 1, col=1
                 )
         
         fig.update_yaxes(range=[0, expr_max], row=i + 1, col=1)
-
-        # add gene name to the left
+        
         annotations.append(dict(
-            x=-0.1,
-            y=y_positions[i],
-            xref="paper",
-            yref="paper",
-            text=gene,
-            showarrow=False,
-            font=dict(size=10),
-            xanchor='right' ))
+            x=-0.1, y=y_positions[i], xref="paper", yref="paper",
+            text=gene, showarrow=False, font=dict(size=10), xanchor='right'
+        ))
 
-    # Calculate appropriate height based on number of genes
-    num_valid_genes = len(valid_genes)
-    fig_height = max(400, num_valid_genes * 120)  # 120px per gene, minimum 400px
-    
+    # Layout
+    fig_height = max(400, num_genes * 120)
     fig.update_layout(
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        font=dict(size=10),
-        showlegend=False, 
-        annotations=annotations,
-        height=fig_height,
+        plot_bgcolor='white', paper_bgcolor='white', font=dict(size=10),
+        showlegend=False, annotations=annotations, height=fig_height,
         margin=dict(l=80, r=20, t=20, b=40)
     )
-
     fig.update_xaxes(showline=True, linewidth=2, linecolor='black')
     fig.update_yaxes(showline=True, linewidth=2, linecolor='black')
     
-    # Cache the complete plot (limit cache size)
+    # Cache plot
     if len(_violin_plot_cache) > 20:
-        # Remove oldest entries
         oldest_key = next(iter(_violin_plot_cache))
         del _violin_plot_cache[oldest_key]
     
