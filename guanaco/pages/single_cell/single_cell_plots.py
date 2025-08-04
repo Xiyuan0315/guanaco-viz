@@ -82,7 +82,7 @@ def generate_annotation_dropdown(anno_list, prefix):
     return dcc.Dropdown(id=f'{prefix}-annotation-dropdown', 
     options=[{'label': label, 'value': label} for label in anno_list],
     placeholder="Search annotations or genes...", 
-    value = anno_list[len(anno_list)//2],
+    value = anno_list[0] if anno_list else None,
     style={'marginBottom': '15px'})
 
 
@@ -218,19 +218,6 @@ def scatter_layout(adata,prefix):
 
         return clustering_dropdown, coordinates_dropdowns
 
-    def generate_annotation_dropdown(anno_list):
-
-        """Initial annotation dropdown with limited options."""
-        return dcc.Dropdown(id=f'{prefix}-annotation-dropdown', 
-        options=[{'label': label, 'value': label} for label in anno_list],
-        placeholder="Search and select an annotation...", 
-        value = anno_list[len(anno_list)//2],
-        style={'marginBottom': '15px'})
-
-    def generate_scatter_gene_selection(init_gene_list):
-        """Initial gene selection dropdown with limited options."""
-        return dcc.Dropdown(id=f'{prefix}-scatter-gene-selection', options=[{'label': label, 'value': label} for label in init_gene_list], 
-        value = init_gene_list[0], placeholder="Search and select a gene...", style={'marginBottom': '15px'})
 
     scatter_transformation_selection = html.Div([
         dbc.RadioItems(
@@ -442,7 +429,7 @@ def scatter_layout(adata,prefix):
         html.Div(
             [
                 html.Label("Select Annotation/Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-                generate_annotation_dropdown(anno_list=anno_list),
+                generate_annotation_dropdown(anno_list=anno_list, prefix=prefix),
                 dcc.Loading(
                     id=f"{prefix}-loading-annotaion-scatter",
                     type="circle",
@@ -454,7 +441,7 @@ def scatter_layout(adata,prefix):
                     dbc.Row([
                         dbc.Col([
                             dbc.Button(
-                                "Update Plots",
+                                "Update other Plots",
                                 id=f"{prefix}-update-plots-button",
                                 color="primary",
                                 n_clicks=0,
@@ -489,7 +476,7 @@ def scatter_layout(adata,prefix):
         html.Div(
             [
                 html.Label("Search Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-                generate_scatter_gene_selection(init_gene_list=adata.var_names.to_list()[:10]),
+                generate_scatter_gene_selection(init_gene_list=adata.var_names.to_list()[:10], prefix=prefix),
                 # Add toggle for co-expression mode
                 dbc.RadioItems(
                     id=f'{prefix}-coexpression-toggle',
