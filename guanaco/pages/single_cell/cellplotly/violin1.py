@@ -1,35 +1,177 @@
 from dash.exceptions import PreventUpdate
-import plotly.graph_objs as go
+import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
 import pandas as pd
 from guanaco.data_loader import color_config
+from guanaco.pages.single_cell.cellplotly.gene_extraction_utils import (
+    extract_gene_expression, extract_multiple_genes, apply_transformation
+)
+import hashlib
+import pickle
+from functools import lru_cache
+import time
 
-def filter_data(adata, annotation, selected_labels):
-    if selected_labels:
-        # Filter the data based on the selected annotation labels
-        cell_indices = adata.obs[annotation].isin(selected_labels)
-        # For backed AnnData, we need to handle filtering differently
-        if hasattr(adata, 'isbacked') and adata.isbacked:
-            # Return the original adata with indices, will handle filtering later
-            return adata, cell_indices
-        else:
-            adata_filtered = adata[cell_indices]
-            return adata_filtered, None
+
+# Global cache for violin plot data
+_violin_data_cache = {}
+_violin_plot_cache = {}
+
+def _create_cache_key(genes, labels, groupby, transformation, adata_id, adata_obs_id=None):
+    """Create a unique cache key for violin data."""
+    key_data = {
+        'genes': tuple(sorted(genes)),
+        'labels': tuple(sorted(labels)) if labels else None,
+        'groupby': groupby,
+        'transformation': transformation,
+        'adata_id': adata_id,
+        'adata_obs_id': adata_obs_id
+    }
+    return hashlib.md5(str(key_data).encode()).hexdigest()
+
+def _get_adata_id(adata):
+    """Get a unique identifier for the adata object."""
+    if hasattr(adata, 'isbacked') and adata.isbacked and hasattr(adata, 'filename'):
+        return adata.filename
     else:
-        return adata, None
+        return f"{id(adata)}_{adata.shape}"
 
-def plot_violin1(adata, genes,labels, groupby, transformation = None, show_box=False, show_points=False , groupby_label_color_map = None):
+def _extract_and_cache_violin_data(adata, genes, labels, groupby, transformation):
+    """Extract and cache violin plot data for reuse."""
+    adata_id = _get_adata_id(adata)
+    cache_key = _create_cache_key(genes, labels, groupby, transformation, adata_id)
+    
+    # Check if data is already cached
+    if cache_key in _violin_data_cache:
+        return _violin_data_cache[cache_key]
+    
+    # Extract data
+    start_time = time.time()
+    
+    # Filter cells based on selected labels
+    if labels:
+        cell_indices = adata.obs[groupby].isin(labels)
+        if hasattr(adata, 'isbacked') and adata.isbacked:
+            cell_indices_array = np.where(cell_indices)[0]
+        else:
+            cell_indices_array = None
+    else:
+        cell_indices = None
+        cell_indices_array = None
+    
+    # Extract multiple genes at once for efficiency
+    valid_genes = [g for g in genes if g in adata.var_names]
+    if not valid_genes:
+        return None
+    
+    # Use batch extraction for better performance
+    if len(valid_genes) > 1:
+        try:
+            if labels and not (hasattr(adata, 'isbacked') and adata.isbacked):
+                filtered_adata = adata[cell_indices]
+                gene_df = extract_multiple_genes(filtered_adata, valid_genes)
+                obs_values = filtered_adata.obs[groupby]
+            else:
+                gene_df = extract_multiple_genes(adata, valid_genes)
+                if cell_indices_array is not None:
+                    gene_df = gene_df.iloc[cell_indices_array]
+                    obs_values = adata.obs.iloc[cell_indices_array][groupby]
+                else:
+                    obs_values = adata.obs[groupby]
+        except Exception:
+            # Fallback to individual extraction
+            gene_data = {}
+            for gene in valid_genes:
+                gene_expr = extract_gene_expression(adata, gene)
+                if cell_indices_array is not None:
+                    gene_expr = gene_expr[cell_indices_array]
+                elif cell_indices is not None:
+                    gene_expr = gene_expr[cell_indices]
+                gene_data[gene] = gene_expr
+            
+            gene_df = pd.DataFrame(gene_data)
+            if cell_indices is not None:
+                if hasattr(adata, 'isbacked') and adata.isbacked:
+                    obs_values = adata.obs.iloc[cell_indices_array][groupby]
+                else:
+                    obs_values = adata.obs[cell_indices][groupby]
+            else:
+                obs_values = adata.obs[groupby]
+    else:
+        # Single gene extraction
+        gene = valid_genes[0]
+        gene_expr = extract_gene_expression(adata, gene)
+        if cell_indices_array is not None:
+            gene_expr = gene_expr[cell_indices_array]
+        elif cell_indices is not None:
+            gene_expr = gene_expr[cell_indices]
+        
+        gene_df = pd.DataFrame({gene: gene_expr})
+        if cell_indices is not None:
+            if hasattr(adata, 'isbacked') and adata.isbacked:
+                obs_values = adata.obs.iloc[cell_indices_array][groupby]
+            else:
+                obs_values = adata.obs[cell_indices][groupby]
+        else:
+            obs_values = adata.obs[groupby]
+    
+    # Apply transformations
+    if transformation:
+        for gene in valid_genes:
+            gene_df[gene] = apply_transformation(gene_df[gene], method=transformation)
+    
+    # Create cached data structure
+    cached_data = {
+        'gene_df': gene_df,
+        'obs_values': obs_values,
+        'valid_genes': valid_genes,
+        'extraction_time': time.time() - start_time
+    }
+    
+    # Cache with size limit (keep last 50 datasets)
+    if len(_violin_data_cache) > 50:
+        # Remove oldest entries
+        oldest_key = next(iter(_violin_data_cache))
+        del _violin_data_cache[oldest_key]
+    
+    _violin_data_cache[cache_key] = cached_data
+    return cached_data
 
+def plot_violin1(adata, genes, labels, groupby, transformation=None, show_box=False, show_points=False, groupby_label_color_map=None, adata_obs=None):
+    
     num_genes = len(genes)
-    if num_genes ==0:
+    if num_genes == 0:
         raise PreventUpdate
-    genes = [g for g in genes if g in adata.var_names]
-    if not genes:
+    
+    # Check plot cache first for complete plot reuse
+    adata_id = _get_adata_id(adata)
+    adata_obs_id = id(adata_obs) if adata_obs is not None else None
+    plot_cache_key = _create_cache_key(genes, labels, groupby, transformation, adata_id, adata_obs_id) + f"_{show_box}_{show_points}"
+    
+    if plot_cache_key in _violin_plot_cache:
+        cached_plot = _violin_plot_cache[plot_cache_key]
+        # Update color mapping if provided
+        if groupby_label_color_map:
+            cached_plot = _update_plot_colors(cached_plot, groupby_label_color_map)
+        return cached_plot
+    
+    # Extract and cache data
+    cached_data = _extract_and_cache_violin_data(adata, genes, labels, groupby, transformation)
+    if cached_data is None:
         return go.Figure()
-
-    filtered_adata, cell_indices = filter_data(adata, groupby, labels)
-    unique_labels = sorted(adata.obs[groupby].unique()) 
+    
+    gene_df = cached_data['gene_df']
+    obs_values = cached_data['obs_values']
+    valid_genes = cached_data['valid_genes']
+    
+    # Set up color mapping - use original data for consistent colors like heatmap1
+    if adata_obs is not None:
+        # Use provided original observations for consistent color mapping
+        unique_labels = sorted(adata_obs[groupby].unique())
+    else:
+        # Fallback to current data if adata_obs not provided
+        unique_labels = sorted(adata.obs[groupby].unique())
+    
     if groupby_label_color_map is None:
         groupby_label_color_map = {
             label: color_config[i % len(color_config)] for i, label in enumerate(unique_labels)
@@ -42,40 +184,10 @@ def plot_violin1(adata, genes,labels, groupby, transformation = None, show_box=F
     annotations = []
     y_positions = [(i / (num_genes-1))  for i in range(num_genes)] if num_genes >1 else [0.5]
     y_positions = y_positions[::-1]  # Reverse the list
-    for i, gene in enumerate(genes):
-        if gene in adata.var_names:
-            # For backed AnnData, we need to extract data directly without creating views
-            if hasattr(filtered_adata, 'isbacked') and filtered_adata.isbacked and cell_indices is not None:
-                # Extract gene index
-                gene_idx = filtered_adata.var_names.get_loc(gene)
-                # Get the indices of cells to extract
-                cell_indices_array = np.where(cell_indices)[0]
-                # Extract expression data directly from the backed file
-                if hasattr(filtered_adata.X, 'toarray'):
-                    gene_expression_matrix = filtered_adata.X[cell_indices_array, gene_idx].toarray().flatten()
-                else:
-                    gene_expression_matrix = filtered_adata.X[cell_indices_array, gene_idx].flatten()
-            else:
-                # Original code for non-backed AnnData or when no filtering is applied
-                gene_expression_matrix = filtered_adata[:, gene].X.toarray().flatten()
-        else:
-            raise ValueError(f"Gene '{gene}' not found in adata.var_names.")
-
-        # transformation
-        if transformation == 'log':
-            gene_expression_matrix = np.log1p(gene_expression_matrix)  # log1p for log(1 + x) transformation
-        elif transformation == 'z_score':
-            gene_expression_matrix = (gene_expression_matrix - gene_expression_matrix.mean(axis=0)) / gene_expression_matrix.std(axis=0)
-
-        # Get the appropriate observations based on whether we filtered or not
-        if hasattr(filtered_adata, 'isbacked') and filtered_adata.isbacked and cell_indices is not None:
-            # For backed AnnData with filtering, use the filtered observations
-            cell_indices_array = np.where(cell_indices)[0]
-            obs_values = filtered_adata.obs.iloc[cell_indices_array][groupby]
-        else:
-            # For non-backed AnnData or no filtering
-            obs_values = filtered_adata.obs[groupby]
-            
+    # Create plot using cached data
+    for i, gene in enumerate(valid_genes):
+        gene_expression_matrix = gene_df[gene].values
+        
         df = pd.DataFrame({
             'Expression': gene_expression_matrix,
             groupby: obs_values,
@@ -83,35 +195,40 @@ def plot_violin1(adata, genes,labels, groupby, transformation = None, show_box=F
         })
 
         points_mode = 'all' if show_points else False
-
-        grouped_data = df.groupby(groupby,observed=True)
-        # for only selected genes
+        grouped_data = df.groupby(groupby, observed=True)
+        
+        # Pre-calculate expression range for better performance
+        expr_max = df['Expression'].max()
+        
+        # for only selected labels
         for label in labels:
-            group_data = grouped_data.get_group(label)
-            fig.add_trace(
-                go.Violin(
-                    y=group_data['Expression'],
-                    x=group_data[groupby],
-                    width = 0.8,
-                    box_visible=show_box,
-                    points=points_mode,
-                    meanline_visible=True,
-                    showlegend=(i == 0),  # Show legend only once
-                    name=label,
-                    spanmode='hard',
-                    bandwidth=0.2,
-                    fillcolor=groupby_label_color_map[label],
-                    line_color='DarkSlateGrey',
-                    hoveron='violins',
-                    hoverinfo='y',
-                    jitter=0.05,
-                    scalemode='width',
-                    scalegroup=label,
-                    marker=dict(size=2),  # Set smaller dot size
-                ),
-                row=i + 1, col=1
-            )
-            fig.update_yaxes(range=[0, df['Expression'].max()], row=i + 1, col=1)
+            if label in grouped_data.groups:  # Check if group exists
+                group_data = grouped_data.get_group(label)
+                fig.add_trace(
+                    go.Violin(
+                        y=group_data['Expression'],
+                        x=group_data[groupby],
+                        width=0.8,
+                        box_visible=show_box,
+                        points=points_mode,
+                        meanline_visible=True,
+                        showlegend=(i == 0),  # Show legend only once
+                        name=label,
+                        spanmode='hard',
+                        bandwidth=0.2,
+                        fillcolor=groupby_label_color_map[label],
+                        line_color='DarkSlateGrey',
+                        hoveron='violins',
+                        hoverinfo='y',
+                        jitter=0.05,
+                        scalemode='width',
+                        scalegroup=label,
+                        marker=dict(size=2),  # Set smaller dot size
+                    ),
+                    row=i + 1, col=1
+                )
+        
+        fig.update_yaxes(range=[0, expr_max], row=i + 1, col=1)
 
         # add gene name to the left
         annotations.append(dict(
@@ -125,7 +242,8 @@ def plot_violin1(adata, genes,labels, groupby, transformation = None, show_box=F
             xanchor='right' ))
 
     # Calculate appropriate height based on number of genes
-    fig_height = max(400, num_genes * 120)  # 120px per gene, minimum 400px
+    num_valid_genes = len(valid_genes)
+    fig_height = max(400, num_valid_genes * 120)  # 120px per gene, minimum 400px
     
     fig.update_layout(
         plot_bgcolor='white',
@@ -140,4 +258,37 @@ def plot_violin1(adata, genes,labels, groupby, transformation = None, show_box=F
     fig.update_xaxes(showline=True, linewidth=2, linecolor='black')
     fig.update_yaxes(showline=True, linewidth=2, linecolor='black')
     
+    # Cache the complete plot (limit cache size)
+    if len(_violin_plot_cache) > 20:
+        # Remove oldest entries
+        oldest_key = next(iter(_violin_plot_cache))
+        del _violin_plot_cache[oldest_key]
+    
+    _violin_plot_cache[plot_cache_key] = fig
     return fig
+
+def _update_plot_colors(fig, new_color_map):
+    """Update plot colors without regenerating the entire plot."""
+    # Create a copy to avoid modifying cached plot
+    new_fig = go.Figure(fig)
+    
+    for trace in new_fig.data:
+        if hasattr(trace, 'name') and trace.name in new_color_map:
+            trace.fillcolor = new_color_map[trace.name]
+    
+    return new_fig
+
+def clear_violin_cache():
+    """Clear the violin plot caches to free memory."""
+    global _violin_data_cache, _violin_plot_cache
+    _violin_data_cache.clear()
+    _violin_plot_cache.clear()
+
+def get_violin_cache_info():
+    """Get information about violin plot cache usage."""
+    return {
+        'data_cache_size': len(_violin_data_cache),
+        'plot_cache_size': len(_violin_plot_cache),
+        'data_cache_keys': list(_violin_data_cache.keys())[:5],  # Show first 5
+        'plot_cache_keys': list(_violin_plot_cache.keys())[:5]   # Show first 5
+    }

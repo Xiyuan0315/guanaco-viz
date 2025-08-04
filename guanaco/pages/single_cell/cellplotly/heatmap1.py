@@ -4,86 +4,10 @@ from dash.exceptions import PreventUpdate
 import numpy as np
 import pandas as pd
 from guanaco.data_loader import color_config
+from guanaco.pages.single_cell.cellplotly.gene_extraction_utils import (
+    extract_gene_expression, extract_multiple_genes, apply_transformation, bin_cells_for_heatmap
+)
 
-
-def bin_cells_for_heatmap(df, gene_columns, groupby, n_bins):
-    """
-    Fast binning of cells for heatmap visualization to reduce memory usage.
-    
-    Parameters:
-    -----------
-    df : pd.DataFrame
-        DataFrame with cells as rows, genes as columns
-    gene_columns : list
-        List of gene column names
-    groupby : str
-        Column name for cell type/group
-    n_bins : int
-        Number of bins to create
-    
-    Returns:
-    --------
-    pd.DataFrame
-        Binned dataframe with reduced number of rows
-    """
-    import time
-    start_time = time.time()
-    
-    # Pre-allocate arrays for faster processing
-    unique_groups = df[groupby].unique()
-    binned_rows = []
-    
-    # Convert gene columns to numpy for faster operations
-    gene_data = df[gene_columns].values
-    group_data = df[groupby].values
-    
-    # Process each group separately to maintain group structure
-    for group_idx, group in enumerate(unique_groups):
-        # Use boolean indexing for faster filtering
-        group_mask = group_data == group
-        group_gene_data = gene_data[group_mask]
-        n_cells_in_group = len(group_gene_data)
-        
-        if n_cells_in_group <= 10:
-            # Keep small groups as-is - add individual rows
-            for i in range(n_cells_in_group):
-                row_dict = {groupby: group}
-                for j, gene in enumerate(gene_columns):
-                    row_dict[gene] = group_gene_data[i, j]
-                binned_rows.append(row_dict)
-            continue
-        
-        # Calculate bins for this group proportionally
-        group_bins = max(1, int(n_bins * n_cells_in_group / len(df)))
-        group_bins = min(group_bins, n_cells_in_group)
-        
-        # Use numpy array slicing for faster binning
-        bin_size = n_cells_in_group // group_bins
-        
-        for i in range(group_bins):
-            start_idx = i * bin_size
-            if i == group_bins - 1:
-                # Last bin gets remaining cells
-                end_idx = n_cells_in_group
-            else:
-                end_idx = (i + 1) * bin_size
-            
-            # Fast numpy mean calculation
-            bin_gene_means = np.mean(group_gene_data[start_idx:end_idx], axis=0)
-            
-            # Create row dictionary
-            row_dict = {groupby: group}
-            for j, gene in enumerate(gene_columns):
-                row_dict[gene] = bin_gene_means[j]
-            
-            binned_rows.append(row_dict)
-    
-    # Single DataFrame creation instead of multiple concat operations
-    result_df = pd.DataFrame(binned_rows)
-    
-    elapsed_time = time.time() - start_time
-    
-    return result_df
 
 def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None, boundary=False, color_map='Viridis', groupby_label_color_map=None, max_cells=50000, n_bins=10000):
     num_genes = len(genes)
@@ -97,6 +21,9 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
     filtered_obs_names = adata.obs_names
     
     # Filter data based on selected labels
+    original_adata = adata  # Keep reference to original data
+    filtered_adata = None  # Initialize for non-backed case
+    
     if labels:
         cell_indices = adata.obs[groupby].isin(labels)
         if is_backed:
@@ -106,16 +33,20 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
             filtered_obs_names = adata.obs_names[cell_indices_array]
         else:
             # For regular AnnData, create a view
-            adata = adata[cell_indices]
-            filtered_obs = adata.obs
-            filtered_obs_names = adata.obs_names
+            filtered_adata = adata[cell_indices]
+            filtered_obs = filtered_adata.obs
+            filtered_obs_names = filtered_adata.obs_names
+    else:
+        # No filtering - use original data
+        filtered_obs = adata.obs
+        filtered_obs_names = adata.obs_names
     
     # Check if we need binning for large datasets
     use_binning = len(filtered_obs) > max_cells
     
     genes = list(reversed(genes))
     # Filter out genes that don't exist in the dataset
-    valid_genes = [gene for gene in genes if gene in adata.var_names]
+    valid_genes = [gene for gene in genes if gene in original_adata.var_names]
     if not valid_genes:
         # Return empty figure if no valid genes
         fig = go.Figure()
@@ -133,48 +64,29 @@ def plot_heatmap1(adata, genes, labels, adata_obs, groupby, transformation=None,
         )
         return fig
     
-    # For backed AnnData, we need to extract data directly without creating views
-    if is_backed:
-        # Extract gene indices for valid genes
-        gene_indices = [adata.var_names.get_loc(gene) for gene in valid_genes]
-        # Extract expression data directly from the backed file
-        if labels and 'cell_indices_array' in locals():
-            # If we filtered cells, extract only those rows
-            if hasattr(adata.X, 'toarray'):
-                # For sparse backed data
-                gene_expression_matrix = adata.X[cell_indices_array, :][:, gene_indices].toarray()
-            else:
-                # For dense backed data
-                gene_expression_matrix = adata.X[cell_indices_array, :][:, gene_indices]
-        else:
-            # No cell filtering, extract all cells
-            if hasattr(adata.X, 'toarray'):
-                # For sparse backed data
-                gene_expression_matrix = adata.X[:, gene_indices].toarray()
-            else:
-                # For dense backed data
-                gene_expression_matrix = adata.X[:, gene_indices]
+    # Use centralized gene extraction
+    if labels and not is_backed and filtered_adata is not None:
+        # For non-backed data, use the filtered adata view we created
+        gene_df = extract_multiple_genes(filtered_adata, valid_genes)
+    elif labels and is_backed:
+        # For backed data with filtering, extract genes individually and filter
+        gene_df_list = []
+        for gene in valid_genes:
+            gene_expr = extract_gene_expression(original_adata, gene)  # Use original adata
+            gene_expr_filtered = gene_expr[cell_indices_array] if 'cell_indices_array' in locals() else gene_expr
+            gene_df_list.append(pd.Series(gene_expr_filtered, name=gene, index=filtered_obs_names))
+        gene_df = pd.concat(gene_df_list, axis=1)
     else:
-        # Original code for non-backed AnnData
-        adata_selected = adata[:, valid_genes]
-        if hasattr(adata_selected.X, 'toarray'):
-            gene_expression_matrix = adata_selected.X.toarray()
-        else:
-            gene_expression_matrix = adata_selected.X
-
-    if transformation == "log":
-        gene_expression_matrix = np.log1p(gene_expression_matrix)
-    elif transformation == "z_score":
-        # Apply z-score normalization with safeguards
-        means = gene_expression_matrix.mean(axis=0)
-        stds = gene_expression_matrix.std(axis=0)
-        # Avoid division by zero - set minimum std to prevent extreme z-scores
-        stds = np.maximum(stds, 1e-8)
-        gene_expression_matrix = (gene_expression_matrix - means) / stds
-        # Clip extreme outliers to reasonable range (-5, 5)
-        gene_expression_matrix = np.clip(gene_expression_matrix, -5, 5)
-
-    df = pd.DataFrame(gene_expression_matrix, columns=valid_genes, index=filtered_obs_names)
+        # No filtering or fallback - extract all genes from original data
+        gene_df = extract_multiple_genes(original_adata, valid_genes)
+        
+    # Apply transformations using centralized utility
+    if transformation:
+        for gene in valid_genes:
+            gene_df[gene] = apply_transformation(gene_df[gene], method=transformation)
+    
+    # Add groupby column
+    df = gene_df.copy()
     df[groupby] = filtered_obs[groupby].values
     heatmap_df = df.copy()
 

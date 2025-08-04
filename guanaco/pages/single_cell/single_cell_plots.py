@@ -196,28 +196,6 @@ def create_global_metadata_filter(adata, prefix):
 def scatter_layout(adata,prefix):
 
 
-    def create_control_components(adata):
-
-        obsm_list, _, default_embedding, default_columns = initialize_scatter_components(adata)
-        clustering_dropdown = dcc.Dropdown(
-            id=f'{prefix}-clustering-dropdown',
-            options=[{'label': key.replace("X_", "").upper(), 'value': key} for key in obsm_list],
-            value='X_umap' if 'X_umap' in obsm_list else default_embedding,
-            placeholder="Select Clustering Method",
-            style={'marginBottom': '15px','fontSize': '14px'},
-            clearable=False
-        
-        )
-
-        coordinates_dropdowns = html.Div([
-            html.Label("X-axis:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-            dcc.Dropdown(id=f'{prefix}-x-axis', options=[{'label': col, 'value': col} for col in default_columns], value=default_columns[0]),
-            html.Label("Y-axis:", style={'fontWeight': 'bold', 'marginTop': '15px', 'marginBottom': '5px'}),
-            dcc.Dropdown(id=f'{prefix}-y-axis', options=[{'label': col, 'value': col} for col in default_columns], value=default_columns[1])
-        ], style={'marginBottom': '15px','fontSize': '14px'})
-
-        return clustering_dropdown, coordinates_dropdowns
-
 
     scatter_transformation_selection = html.Div([
         dbc.RadioItems(
@@ -380,7 +358,7 @@ def scatter_layout(adata,prefix):
     sample_genes = adata.var_names[:20].tolist()
     anno_list.extend(sample_genes)
 
-    clustering_dropdown, coordinates_dropdowns = create_control_components(adata)
+    clustering_dropdown, coordinates_dropdowns = create_control_components(adata, prefix)
     layout = html.Div([
         # Add Store component to hold selected cells data
         dcc.Store(id=f'{prefix}-selected-cells-store'),
@@ -1712,24 +1690,32 @@ def single_cell_callbacks(app, adata, prefix):
                 groupby_label_color_map=groupby_label_color_map
             )
     
+    # Add store for violin plot cache
     @app.callback(
-        Output(f'{prefix}-violin-plot1', 'figure'),
+        Output(f'{prefix}-violin-plot-cache-store', 'data'),
         [Input(f'{prefix}-single-cell-genes-selection', 'value'),
          Input(f'{prefix}-single-cell-annotation-dropdown', 'value'),
          Input(f'{prefix}-single-cell-label-selection', 'value'),
          Input(f'{prefix}-violin-log-or-zscore', 'value'),
-        Input(f'{prefix}-show-box1', 'value'),
+         Input(f'{prefix}-show-box1', 'value'),
          Input(f'{prefix}-show-scatter1', 'value'),
          Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
-         Input(f'{prefix}-selected-cells-store', 'data'),
-         Input(f'{prefix}-single-cell-tabs', 'value')],
-        [State(f'{prefix}-violin-plot1', 'figure')]  # Keep current figure
+         Input(f'{prefix}-selected-cells-store', 'data')],
+        [State(f'{prefix}-violin-plot-cache-store', 'data')]
     )
-    def update_violin1(selected_genes, selected_annotation, selected_labels,
-                       transformation, show_box_plot, show_scatter1, discrete_color_map, selected_cells, active_tab, current_figure):
-        # Lazy loading: only update if this tab is active
-        if active_tab != 'violin-tab':
-            return current_figure if current_figure else go.Figure()
+    def update_violin_cache(selected_genes, selected_annotation, selected_labels,
+                           transformation, show_box_plot, show_scatter1, discrete_color_map, 
+                           selected_cells, current_cache):
+        # Create cache key for current parameters
+        cache_key = f"{selected_genes}_{selected_annotation}_{selected_labels}_{transformation}_{show_box_plot}_{show_scatter1}_{discrete_color_map}_{selected_cells}"
+        
+        # Initialize cache if needed
+        if current_cache is None:
+            current_cache = {}
+        
+        # Return existing cache if parameters haven't changed
+        if 'current_key' in current_cache and current_cache['current_key'] == cache_key:
+            return current_cache
         
         # Use discrete color map if selected, otherwise use default
         color_map = None
@@ -1743,6 +1729,7 @@ def single_cell_callbacks(app, adata, prefix):
         # When cells are selected, selected_labels will be auto-updated to match
         filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
         
+        # Generate plot with optimized caching
         fig = plot_violin1(
             filtered_adata,
             selected_genes,
@@ -1751,16 +1738,52 @@ def single_cell_callbacks(app, adata, prefix):
             transformation=transformation,
             show_box='show' in show_box_plot if show_box_plot else False,
             show_points='show' in show_scatter1 if show_scatter1 else False,
-            groupby_label_color_map=color_map
+            groupby_label_color_map=color_map,
+            adata_obs=adata.obs  # Pass original observations for consistent color mapping
         )
-        num_genes = len(selected_genes)
-        num_categories = len(selected_labels)
+        
+        # Update layout for violin plot
+        num_genes = len(selected_genes) if selected_genes else 0
+        num_categories = len(selected_labels) if selected_labels else 0
         fig.update_layout(
             height=min(1000, max(300, 80 * num_genes)),
             width=min(500, max(200, 110 * num_categories)),
             margin=dict(l=130, r=10, t=30, b=30)
         )
-        return fig
+        
+        # Store in cache (limit cache size to prevent memory issues)
+        if len(current_cache) > 10:  # Keep only last 10 plots
+            # Remove oldest entries
+            keys_to_remove = list(current_cache.keys())[:-9]  # Keep last 9 + current
+            for key in keys_to_remove:
+                if key != 'current_key':
+                    current_cache.pop(key, None)
+        
+        current_cache[cache_key] = fig.to_dict()
+        current_cache['current_key'] = cache_key
+        
+        return current_cache
+
+    # Optimized callback for violin plot display with tab persistence
+    @app.callback(
+        Output(f'{prefix}-violin-plot1', 'figure'),
+        [Input(f'{prefix}-violin-plot-cache-store', 'data'),
+         Input(f'{prefix}-single-cell-tabs', 'value')],
+        [State(f'{prefix}-violin-plot1', 'figure')]
+    )
+    def display_violin1(cache_data, active_tab, current_figure):
+        # Tab persistence: only update if this tab is active or if we don't have a figure
+        if active_tab != 'violin-tab':
+            return current_figure if current_figure else go.Figure()
+        
+        # Return cached figure if available
+        if cache_data and 'current_key' in cache_data:
+            current_key = cache_data['current_key']
+            if current_key in cache_data:
+                return go.Figure(cache_data[current_key])
+        
+        # Fallback to current figure or empty figure
+        return current_figure if current_figure else go.Figure()
     
     # New callback for mode explanation
     @app.callback(

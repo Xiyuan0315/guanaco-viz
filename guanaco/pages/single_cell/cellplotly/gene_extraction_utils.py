@@ -265,3 +265,127 @@ def get_cache_info():
         'max_size': _gene_cache.max_size,
         'keys': list(_gene_cache.cache.keys())
     }
+
+
+def bin_cells_for_heatmap(df, gene_columns, groupby, n_bins, continuous_key=None):
+    """
+    Unified binning function for heatmap visualization to reduce memory usage.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        DataFrame with cells as rows, genes as columns
+    gene_columns : list
+        List of gene column names
+    groupby : str
+        Column name for cell type/group
+    n_bins : int
+        Number of bins to create
+    continuous_key : str, optional
+        If provided, sort by this continuous variable first (for heatmap2)
+    
+    Returns:
+    --------
+    pd.DataFrame
+        Binned dataframe with reduced number of rows
+    """
+    import time
+    from collections import Counter
+    start_time = time.time()
+    
+    # If continuous ordering is requested, use continuous binning approach
+    if continuous_key is not None:
+        # Sort by continuous key first
+        df_sorted = df.sort_values(continuous_key)
+        n_cells = len(df_sorted)
+        
+        # Calculate bin size
+        bin_size = max(1, n_cells // n_bins)
+        
+        binned_rows = []
+        gene_data = df_sorted[gene_columns].values
+        group_data = df_sorted[groupby].values
+        continuous_data = df_sorted[continuous_key].values
+        
+        for i in range(0, n_cells, bin_size):
+            end_idx = min(i + bin_size, n_cells)
+            
+            # Average expressions and continuous values
+            bin_gene_means = np.mean(gene_data[i:end_idx], axis=0)
+            bin_continuous_mean = np.mean(continuous_data[i:end_idx])
+            
+            # Use most frequent group in bin
+            bin_groups = group_data[i:end_idx]
+            most_common_group = Counter(bin_groups).most_common(1)[0][0]
+            
+            # Create row
+            row_dict = {
+                groupby: most_common_group,
+                continuous_key: bin_continuous_mean
+            }
+            for j, gene in enumerate(gene_columns):
+                row_dict[gene] = bin_gene_means[j]
+            
+            binned_rows.append(row_dict)
+        
+        result_df = pd.DataFrame(binned_rows)
+        elapsed_time = time.time() - start_time
+        print(f"Continuous binning completed in {elapsed_time:.2f} seconds: {len(df)} cells -> {len(result_df)} bins")
+        return result_df
+    
+    # Original categorical binning approach
+    unique_groups = df[groupby].unique()
+    binned_rows = []
+    
+    # Convert gene columns to numpy for faster operations
+    gene_data = df[gene_columns].values
+    group_data = df[groupby].values
+    
+    # Process each group separately to maintain group structure
+    for group_idx, group in enumerate(unique_groups):
+        # Use boolean indexing for faster filtering
+        group_mask = group_data == group
+        group_gene_data = gene_data[group_mask]
+        n_cells_in_group = len(group_gene_data)
+        
+        if n_cells_in_group <= 10:
+            # Keep small groups as-is - add individual rows
+            for i in range(n_cells_in_group):
+                row_dict = {groupby: group}
+                for j, gene in enumerate(gene_columns):
+                    row_dict[gene] = group_gene_data[i, j]
+                binned_rows.append(row_dict)
+            continue
+        
+        # Calculate bins for this group proportionally
+        group_bins = max(1, int(n_bins * n_cells_in_group / len(df)))
+        group_bins = min(group_bins, n_cells_in_group)
+        
+        # Use numpy array slicing for faster binning
+        bin_size = n_cells_in_group // group_bins
+        
+        for i in range(group_bins):
+            start_idx = i * bin_size
+            if i == group_bins - 1:
+                # Last bin gets remaining cells
+                end_idx = n_cells_in_group
+            else:
+                end_idx = (i + 1) * bin_size
+            
+            # Fast numpy mean calculation
+            bin_gene_means = np.mean(group_gene_data[start_idx:end_idx], axis=0)
+            
+            # Create row dictionary
+            row_dict = {groupby: group}
+            for j, gene in enumerate(gene_columns):
+                row_dict[gene] = bin_gene_means[j]
+            
+            binned_rows.append(row_dict)
+    
+    # Single DataFrame creation instead of multiple concat operations
+    result_df = pd.DataFrame(binned_rows)
+    
+    elapsed_time = time.time() - start_time
+    print(f"Categorical binning completed in {elapsed_time:.2f} seconds: {len(df)} cells -> {len(result_df)} bins")
+    
+    return result_df

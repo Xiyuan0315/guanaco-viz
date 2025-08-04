@@ -126,6 +126,8 @@ def generate_violin_layout(adata, default_gene_markers,discrete_label_list,prefi
                 html.Div([violin_show_box1, violin_show_scatter1],
                         style={'display': 'flex', 'gap': '20px'})
             ], style={'marginBottom': '15px'}),
+            # Add cache store for violin plot optimization
+            dcc.Store(id=f'{prefix}-violin-plot-cache-store'),
             dcc.Loading(
                 id="loading-violin1",
                 type="circle",

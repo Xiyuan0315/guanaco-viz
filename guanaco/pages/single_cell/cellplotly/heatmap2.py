@@ -3,52 +3,11 @@ from plotly.subplots import make_subplots
 import numpy as np
 import pandas as pd
 import plotly.express as px
+from guanaco.pages.single_cell.cellplotly.gene_extraction_utils import (
+    extract_multiple_genes, apply_transformation, bin_cells_for_heatmap
+)
 
 
-def bin_cells_for_heatmap_continuous(df, gene_columns, groupby, continuous_key, n_bins):
-    """Fast binning for heatmap2 with continuous ordering."""
-    import time
-    start_time = time.time()
-    
-    # Sort by continuous key first
-    df_sorted = df.sort_values(continuous_key)
-    n_cells = len(df_sorted)
-    
-    # Calculate bin size
-    bin_size = max(1, n_cells // n_bins)
-    
-    binned_rows = []
-    gene_data = df_sorted[gene_columns].values
-    group_data = df_sorted[groupby].values
-    continuous_data = df_sorted[continuous_key].values
-    
-    for i in range(0, n_cells, bin_size):
-        end_idx = min(i + bin_size, n_cells)
-        
-        # Average expressions and continuous values
-        bin_gene_means = np.mean(gene_data[i:end_idx], axis=0)
-        bin_continuous_mean = np.mean(continuous_data[i:end_idx])
-        
-        # Use most frequent group in bin
-        bin_groups = group_data[i:end_idx]
-        from collections import Counter
-        most_common_group = Counter(bin_groups).most_common(1)[0][0]
-        
-        # Create row
-        row_dict = {
-            groupby: most_common_group,
-            continuous_key: bin_continuous_mean
-        }
-        for j, gene in enumerate(gene_columns):
-            row_dict[gene] = bin_gene_means[j]
-        
-        binned_rows.append(row_dict)
-    
-    result_df = pd.DataFrame(binned_rows)
-    elapsed_time = time.time() - start_time
-    print(f"Heatmap2 binning completed in {elapsed_time:.2f} seconds: {len(df)} cells -> {len(result_df)} bins")
-    
-    return result_df
 
 
 def plot_heatmap2_continuous(adata, genes, groupby1, continuous_key, labels=None, log=False, z_score=False, 
@@ -81,36 +40,35 @@ def plot_heatmap2_continuous(adata, genes, groupby1, continuous_key, labels=None
         )
         return fig
  
-    # For backed AnnData, we need to extract data directly without creating views
-    if hasattr(adata, 'isbacked') and adata.isbacked:
-        # Extract gene indices for valid genes
-        gene_indices = [adata.var_names.get_loc(gene) for gene in valid_genes]
-        # Extract expression data directly from the backed file
-        if hasattr(adata.X, 'toarray'):
-            gene_expression_matrix = adata.X[:, gene_indices].toarray()
-        else:
-            gene_expression_matrix = adata.X[:, gene_indices]
-    else:
-        # Original code for non-backed AnnData
-        adata_selected = adata[:, valid_genes]
-        gene_expression_matrix = adata_selected.X.toarray()
+    # Use centralized gene extraction
+    gene_df = extract_multiple_genes(adata, valid_genes)
     
+    # Apply transformations using centralized utility
     if log:
-        gene_expression_matrix = np.log1p(gene_expression_matrix)
+        for gene in valid_genes:
+            gene_df[gene] = apply_transformation(gene_df[gene], method='log1p')
     if z_score:
-        gene_expression_matrix = (gene_expression_matrix - gene_expression_matrix.mean(axis=0)) / gene_expression_matrix.std(axis=0)
-
-    gene_expression_df = pd.DataFrame(gene_expression_matrix, columns=valid_genes)
-    gene_expression_df.insert(0, 'CellID', adata.obs_names)
+        for gene in valid_genes:
+            gene_df[gene] = apply_transformation(gene_df[gene], method='z_score')
+    
+    # Add cell IDs
+    gene_df.insert(0, 'CellID', adata.obs_names)
 
     # Process labels
     label_df = pd.DataFrame(adata.obs[[groupby1, continuous_key]])
     label_df.insert(0, 'CellID', adata.obs_names)
     
-    heatmap_df = pd.merge(gene_expression_df, label_df, on='CellID')
+    heatmap_df = pd.merge(gene_df, label_df, on='CellID')
     
-    # Sort by continuous value (e.g., pseudotime)
+    # Sort by continuous value (e.g., pseudotime) and apply binning if needed
     sorted_heatmap_df = heatmap_df.sort_values(continuous_key)
+    
+    # Apply binning if dataset is large
+    use_binning = len(sorted_heatmap_df) > max_cells
+    if use_binning:
+        import warnings
+        warnings.warn(f"⏳ Processing large dataset: Binning {len(sorted_heatmap_df):,} cells into {n_bins:,} bins for optimal performance...", UserWarning)
+        sorted_heatmap_df = bin_cells_for_heatmap(sorted_heatmap_df, valid_genes, groupby1, n_bins, continuous_key=continuous_key)
     
     heatmap_gene_matrix = sorted_heatmap_df[valid_genes].values.T
     
