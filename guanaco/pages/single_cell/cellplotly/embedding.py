@@ -70,22 +70,35 @@ def plot_combined_scatter_subplots(
         # Create subplots with proper spacing
         fig = make_subplots(
             rows=1, cols=2,
-            shared_xaxes=True,
-            shared_yaxes=True,
+            shared_xaxes='all',  # Use 'all' for stronger sharing
+            shared_yaxes='all',  # Use 'all' for stronger sharing
             subplot_titles=[f"<b>{annotation}</b>", f"<b>{gene}</b>" if gene_plot_type == 'single' else f"<b>Co-expression: {gene} & {gene2}</b>"],
-            horizontal_spacing=0.16,  # Spacing between plots
-            column_widths=[0.42, 0.42]  # Plot widths
+            horizontal_spacing=0.20,  # Increase spacing to 20% to prevent overlap
+            column_widths=[0.40, 0.40]  # Reduce plot widths to 40% each
         )
     
-    # Manually position subplot titles for single plot mode only
-    if single_plot_mode:
-        for i, title_annotation in enumerate(fig.layout.annotations):
+    # Position subplot titles properly
+    for i, title_annotation in enumerate(fig.layout.annotations):
+        if single_plot_mode:
             # Center title for single plot
             title_annotation.update(
                 font=dict(size=18),
                 xanchor="center", 
                 yanchor="bottom",
                 x=0.5, 
+                y=0.98
+            )
+        else:
+            # Position titles for dual mode with new domains
+            if i == 0:  # Left subplot title
+                x_pos = 0.20  # Center of left plot (0 to 0.40)
+            else:  # Right subplot title  
+                x_pos = 0.80  # Center of right plot (0.60 to 1.0)
+            title_annotation.update(
+                font=dict(size=18),
+                xanchor="center",
+                yanchor="bottom",
+                x=x_pos,
                 y=0.98
             )
     
@@ -356,9 +369,9 @@ def plot_combined_scatter_subplots(
                     colorbar=dict(
                         title=f"{annotation}<br>{transformation if transformation else ''}",
                         orientation='v',
-                        len=0.8,
+                        len=0.5,
                         thickness=15,
-                        x=-0.15,
+                        x=-0.08,
                         xanchor='right',
                         y=0.5,
                         yanchor='middle'
@@ -542,39 +555,68 @@ def plot_combined_scatter_subplots(
             legend=legend_config,
             uirevision='constant',
             margin=dict(t=50, b=100, l=50, r=50),
-            dragmode='zoom'
+            dragmode='zoom',
+            # Set domains to prevent overlap while maintaining axis sharing
+            xaxis=dict(
+                domain=[0, 0.40],
+                matches='x2',  # Explicitly match x2 axis
+                showgrid=False,
+                zeroline=False,
+                constrain='domain',
+                showline=True,
+                linewidth=2,
+                linecolor='black',
+                tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
+            ),
+            xaxis2=dict(
+                domain=[0.60, 1.0],
+                showgrid=False,
+                zeroline=False,
+                constrain='domain',
+                showline=True,
+                linewidth=2,
+                linecolor='black',
+                tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
+            ),
+            yaxis=dict(
+                domain=[0, 1],
+                matches='y2',  # Explicitly match y2 axis
+                showgrid=False,
+                zeroline=False,
+                constrain='domain',
+                showline=True,
+                linewidth=2,
+                linecolor='black',
+                tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
+            ),
+            yaxis2=dict(
+                domain=[0, 1],
+                showgrid=False,
+                zeroline=False,
+                constrain='domain',
+                showline=True,
+                linewidth=2,
+                linecolor='black',
+                tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
+            )
         )
         
-        # Update axis properties
-        fig.update_xaxes(
-            title=x_axis,
-            showgrid=False,
-            zeroline=False,
-            constrain='domain',
-            showline=True,
-            linewidth=2,
-            linecolor='black',
-            tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)'),
-            scaleanchor='y',
-            scaleratio=1
-        )
+        # Calculate data ranges for synchronization
+        x_min = embedding_df[x_axis].min()
+        x_max = embedding_df[x_axis].max()
+        y_min = embedding_df[y_axis].min()
+        y_max = embedding_df[y_axis].max()
         
-        fig.update_yaxes(
-            title=y_axis,
-            showgrid=False,
-            zeroline=False,
-            constrain='domain',
-            showline=True,
-            linewidth=2,
-            linecolor='black',
-            tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
-        )
+        # Add padding to ranges
+        x_padding = (x_max - x_min) * 0.05
+        y_padding = (y_max - y_min) * 0.05
         
-        # Override domain for precise spacing with more gap to prevent overlap
-        fig.update_layout(
-            xaxis=dict(domain=[0, 0.4]),       # Left plot: 0% to 40% (wider gap)
-            xaxis2=dict(domain=[0.6, 1.0]),    # Right plot: 60% to 100% (20% gap)
-        )
+        x_range = [x_min - x_padding, x_max + x_padding]
+        y_range = [y_min - y_padding, y_max + y_padding]
+        
+        # Update titles and ranges for both axes
+        fig.update_xaxes(title=x_axis, range=x_range)
+        fig.update_yaxes(title=y_axis, range=y_range)
     
     # Axis synchronization is handled by scaleanchor properties in the layout
     
