@@ -18,7 +18,7 @@ scatter_config = {
         'filename': 'annotation_scatter'
     },
     'displaylogo': False,
-    'scrollZoom': True,  # Enable scroll to zoom
+    'scrollZoom': False,  # Disable scroll to zoom
     'dragmode': 'pan',   # Default drag mode is pan
     'doubleClick': 'reset',  # Double click to reset zoom
     'showTips': False,  # Reduce hover updates
@@ -36,7 +36,7 @@ gene_scatter_config = {
         'filename': 'gene_scatter'
     },
     'displaylogo': False,
-    'scrollZoom': True,  # Enable scroll to zoom
+    'scrollZoom': False,  # Disable scroll to zoom
     'dragmode': 'pan',   # Default drag mode is pan
     'doubleClick': 'reset',  # Double click to reset zoom
     'showTips': False,  # Reduce hover updates

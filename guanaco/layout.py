@@ -1,7 +1,8 @@
 import dash_bootstrap_components as dbc
 from dash import html, dcc
 from guanaco.pages.browser.gene_browser import gene_browser_layout
-from guanaco.pages.single_cell.single_cell_plots import scatter_layout, generate_single_cell_tabs
+from guanaco.pages.single_cell.single_cell_plots import generate_single_cell_tabs
+from guanaco.pages.single_cell.mod020_scatter import generate_scatter_layout
 import muon as mu
 
 # tip
@@ -207,7 +208,7 @@ def anndata_layout(adata, default_gene_markers, discrete_label_list, prefix):
         children=[
             dbc.Card(
                 [
-                    html.Div(scatter_layout(adata, prefix), style={'padding': '20px'}),
+                    html.Div(generate_scatter_layout(adata, prefix), style={'padding': '20px'}),
                     html.Hr(style={'border': '1px solid #ddd'}),
                     html.Div(
                         generate_single_cell_tabs(adata, default_gene_markers, discrete_label_list, prefix),
