@@ -523,7 +523,7 @@ def generate_scatter_layout(adata, prefix):
                             html.Div(id=f"{prefix}-selection-status", style={'textAlign': 'center', 'marginTop': '5px'})
                         ], style={
                             "flex": "0 0 auto",  # Don't grow, stay at natural size
-                            "paddingTop": "25px"  # Increased gap to ensure buttons are below legend
+                            "marginTop": "-10px"  # Negative margin to pull buttons closer to legend
                         }),
                     ], style={
                         "display": "flex",

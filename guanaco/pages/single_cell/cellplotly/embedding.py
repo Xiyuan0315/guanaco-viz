@@ -545,7 +545,7 @@ def plot_combined_scatter_subplots(
         legend_config = dict(
             orientation='h',
             itemsizing='constant',
-            x=0, y=-0.25,  # Increased margin to prevent button overlap
+            x=0, y=-0.15,  # Positioned below x-axis without overlapping
             xanchor='left',
             yanchor='top',
             bgcolor='rgba(0,0,0,0)',
@@ -572,7 +572,7 @@ def plot_combined_scatter_subplots(
             autosize=True,
             showlegend=(legend_show == 'right' and annotation_type == 'categorical'),
             legend=legend_config,
-            margin=dict(t=30, b=120, l=60, r=60),  # Balanced margins
+            margin=dict(t=30, b=50, l=60, r=60),  # Reduced bottom margin
             uirevision='constant',
             dragmode='zoom'  # Enable zoom mode to match scatter_config
         )
@@ -586,7 +586,7 @@ def plot_combined_scatter_subplots(
             showlegend=(legend_show == 'right' and annotation_type == 'categorical'),
             legend=legend_config,
             uirevision='constant',
-            margin=dict(t=50, b=100, l=60, r=60),
+            margin=dict(t=50, b=50, l=60, r=60),  # Reduced bottom margin
             dragmode='zoom'
         )
     
