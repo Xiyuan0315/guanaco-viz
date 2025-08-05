@@ -117,8 +117,9 @@ def plot_combined_scatter_subplots(
     x_axis = x_axis or embedding_columns[0]
     y_axis = y_axis or (embedding_columns[1] if len(embedding_columns) > 1 else embedding_columns[0])
     
-    # Track all traces for selection
-    all_customdata = []
+    # Create cell index array for customdata
+    cell_indices = np.arange(len(adata))
+    all_customdata = []  # Initialize for collecting customdata
     
     if single_plot_mode:
         # SINGLE PLOT MODE: Use only the annotation/gene for plotting
@@ -137,16 +138,18 @@ def plot_combined_scatter_subplots(
             unique_labels_filtered = sorted(embedding_df[annotation].unique())
             
             # Load color palettes for consistent color assignment
+            from guanaco.data_loader import color_config
             import json
             from pathlib import Path
-            cvd_color_path = Path(__file__).parent.parent / "cvd_color.json"
-            with open(cvd_color_path, "r") as f:
-                palette_json = json.load(f)
             
             if color_map_discrete:
+                cvd_color_path = Path(__file__).parent.parent / "cvd_color.json"
+                with open(cvd_color_path, "r") as f:
+                    palette_json = json.load(f)
                 color_palette = palette_json["color_palettes"][color_map_discrete]
             else:
-                color_palette = palette_json["color_palettes"]["Okabe_Ito"]
+                # Use color_config for consistency with violin and heatmap plots
+                color_palette = color_config
             
             # Create consistent color mapping based on ALL labels from full dataset
             label_to_color = {
@@ -154,7 +157,7 @@ def plot_combined_scatter_subplots(
                 for i, label in enumerate(all_unique_labels)
             }
             
-            # Add grey background
+            # Add grey background (non-selectable)
             fig.add_trace(go.Scattergl(
                 x=embedding_df[x_axis],
                 y=embedding_df[y_axis],
@@ -167,16 +170,21 @@ def plot_combined_scatter_subplots(
                 name='Background',
                 hoverinfo='skip',
                 showlegend=False,
-                visible=True
+                visible=True,
+                selectedpoints=[],  # Disable selection for background
+                unselected=dict(marker=dict(opacity=0))  # Make unselected invisible
             ), row=target_row, col=target_col)
             
             # Add traces for each category present in filtered data
             for label in unique_labels_filtered:
                 mask = embedding_df[annotation] == label
-                cell_indices = np.arange(len(adata))[mask]
-                all_customdata.extend(cell_indices)
+                masked_indices = np.arange(len(adata))[mask]
+                all_customdata.extend(masked_indices)
                 
                 show_in_legend = not on_data
+                
+                # Use flat array for customdata (Plotly may not serialize 2D arrays properly)
+                customdata_array = masked_indices.tolist()
                 
                 fig.add_trace(go.Scattergl(
                     x=embedding_df.loc[mask, x_axis],
@@ -188,7 +196,7 @@ def plot_combined_scatter_subplots(
                         opacity=opacity,
                     ),
                     name=str(label),
-                    customdata=cell_indices,
+                    customdata=customdata_array,
                     hoverinfo='skip',
                     showlegend=show_in_legend,
                     legendgroup=str(label),
@@ -196,6 +204,27 @@ def plot_combined_scatter_subplots(
                     selected=dict(marker=dict(opacity=1)),
                     unselected=dict(marker=dict(opacity=0.2))
                 ), row=target_row, col=target_col)
+            
+            # Add text annotations if legend_show == 'on data'
+            if on_data:
+                for label in unique_labels_filtered:
+                    mask = embedding_df[annotation] == label
+                    # Calculate centroid of the cluster
+                    centroid_x = embedding_df.loc[mask, x_axis].median()
+                    centroid_y = embedding_df.loc[mask, y_axis].median()
+                    
+                    # Add annotation at centroid
+                    fig.add_annotation(
+                        x=centroid_x,
+                        y=centroid_y,
+                        text=f"<b>{label}</b>",
+                        showarrow=False,
+                        font=dict(size=12, color='black'),
+                        xanchor='center',
+                        yanchor='middle',
+                        row=target_row,
+                        col=target_col
+                    )
         
         else:
             # Continuous single plot (gene or continuous annotation)
@@ -243,7 +272,7 @@ def plot_combined_scatter_subplots(
                         yanchor='top'
                     )
                 ),
-                customdata=embedding_df_sorted['_cell_idx'],
+                customdata=embedding_df_sorted['_cell_idx'].values.tolist(),
                 hoverinfo='skip',
                 selectedpoints=None,
                 selected=dict(marker=dict(opacity=1)),
@@ -251,6 +280,7 @@ def plot_combined_scatter_subplots(
             ), row=target_row, col=target_col)
     else:
         # DUAL PLOT MODE: Original subplot logic (annotation on left, gene on right)
+        all_customdata = []  # Initialize for dual plot mode
         # LEFT PLOT: Annotation (same as before)
         if annotation_type == 'categorical':
             # Use existing categorical plotting logic
@@ -267,16 +297,18 @@ def plot_combined_scatter_subplots(
             unique_labels_filtered = sorted(embedding_df[annotation].unique())
             
             # Load color palettes for consistent color assignment
+            from guanaco.data_loader import color_config
             import json
             from pathlib import Path
-            cvd_color_path = Path(__file__).parent.parent / "cvd_color.json"
-            with open(cvd_color_path, "r") as f:
-                palette_json = json.load(f)
             
             if color_map_discrete:
+                cvd_color_path = Path(__file__).parent.parent / "cvd_color.json"
+                with open(cvd_color_path, "r") as f:
+                    palette_json = json.load(f)
                 color_palette = palette_json["color_palettes"][color_map_discrete]
             else:
-                color_palette = palette_json["color_palettes"]["Okabe_Ito"]
+                # Use color_config for consistency with violin and heatmap plots
+                color_palette = color_config
             
             # Create consistent color mapping based on ALL labels from full dataset
             label_to_color = {
@@ -284,7 +316,7 @@ def plot_combined_scatter_subplots(
                 for i, label in enumerate(all_unique_labels)
             }
             
-            # Add grey background
+            # Add grey background (non-selectable)
             fig.add_trace(go.Scattergl(
                 x=embedding_df[x_axis],
                 y=embedding_df[y_axis],
@@ -297,16 +329,21 @@ def plot_combined_scatter_subplots(
                 name='Background',
                 hoverinfo='skip',
                 showlegend=False,
-                visible=True
+                visible=True,
+                selectedpoints=[],  # Disable selection for background
+                unselected=dict(marker=dict(opacity=0))  # Make unselected invisible
             ), row=1, col=1)
             
             # Add traces for each category present in filtered data
             for label in unique_labels_filtered:
                 mask = embedding_df[annotation] == label
-                cell_indices = np.arange(len(adata))[mask]
-                all_customdata.extend(cell_indices)
+                masked_indices = np.arange(len(adata))[mask]
+                all_customdata.extend(masked_indices)
                 
                 show_in_legend = not on_data
+                
+                # Use flat array for customdata (Plotly may not serialize 2D arrays properly)
+                customdata_array = masked_indices.tolist()
                 
                 fig.add_trace(go.Scattergl(
                     x=embedding_df.loc[mask, x_axis],
@@ -318,7 +355,7 @@ def plot_combined_scatter_subplots(
                         opacity=opacity,
                     ),
                     name=str(label),
-                    customdata=cell_indices,
+                    customdata=customdata_array,
                     hoverinfo='skip',
                     showlegend=show_in_legend,
                     legendgroup=str(label),
@@ -326,6 +363,27 @@ def plot_combined_scatter_subplots(
                     selected=dict(marker=dict(opacity=1)),
                     unselected=dict(marker=dict(opacity=0.2))
                 ), row=1, col=1)
+            
+            # Add text annotations if legend_show == 'on data'
+            if on_data:
+                for label in unique_labels_filtered:
+                    mask = embedding_df[annotation] == label
+                    # Calculate centroid of the cluster
+                    centroid_x = embedding_df.loc[mask, x_axis].median()
+                    centroid_y = embedding_df.loc[mask, y_axis].median()
+                    
+                    # Add annotation at centroid
+                    fig.add_annotation(
+                        x=centroid_x,
+                        y=centroid_y,
+                        text=f"<b>{label}</b>",
+                        showarrow=False,
+                        font=dict(size=12, color='black'),
+                        xanchor='center',
+                        yanchor='middle',
+                        row=1,
+                        col=1
+                    )
         
         else:  # continuous or gene
             # Extract values
@@ -373,7 +431,7 @@ def plot_combined_scatter_subplots(
                         yanchor='top'
                     )
                 ),
-                customdata=embedding_df_sorted['_cell_idx'],
+                customdata=embedding_df_sorted['_cell_idx'].values.tolist(),
                 hoverinfo='skip',
                 selectedpoints=None,
                 selected=dict(marker=dict(opacity=1)),
@@ -425,7 +483,7 @@ def plot_combined_scatter_subplots(
                             opacity=opacity,
                         ),
                         name=category,
-                        customdata=np.arange(len(adata))[mask],
+                        customdata=np.arange(len(adata))[mask].tolist(),
                         hoverinfo='skip',
                         selectedpoints=None,
                         selected=dict(marker=dict(opacity=1)),
@@ -474,7 +532,7 @@ def plot_combined_scatter_subplots(
                         yanchor='middle'
                     )
                 ),
-                customdata=embedding_df_sorted['_cell_idx'],
+                customdata=embedding_df_sorted['_cell_idx'].values.tolist(),
                 hoverinfo='skip',
                 showlegend=False,
                 selectedpoints=None,
@@ -515,9 +573,11 @@ def plot_combined_scatter_subplots(
             showlegend=(legend_show == 'right' and annotation_type == 'categorical'),
             legend=legend_config,
             margin=dict(t=20, b=120),  # Increased bottom margin for legend spacing
-            uirevision='constant'
+            uirevision='constant',
+            dragmode='zoom'  # Enable zoom mode to match scatter_config
         )
     else:
+        # Subplot layout configuration
         fig.update_layout(
             plot_bgcolor='white',
             paper_bgcolor='white',
@@ -525,12 +585,9 @@ def plot_combined_scatter_subplots(
             autosize=True,
             showlegend=(legend_show == 'right' and annotation_type == 'categorical'),
             legend=legend_config,
-            xaxis=dict(domain=[0, 0.45]),
-            xaxis2=dict(domain=[0.55, 1]),
-            yaxis=dict(domain=[0, 1]),
-            yaxis2=dict(domain=[0, 1]),
             uirevision='constant',
-            margin=dict(t=20, b=100)  # Increased bottom margin for legend spacing
+            margin=dict(t=50, b=100, l=50, r=50),
+            dragmode='zoom'
         )
     
     # Calculate data ranges for synchronization
@@ -634,5 +691,13 @@ def plot_combined_scatter_subplots(
             tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)'),
             row=1, col=2
         )
+        
+        # Override domain for precise spacing with more gap to prevent overlap
+        fig.update_layout(
+            xaxis=dict(domain=[0, 0.4]),       # Left plot: 0% to 40% (wider gap)
+            xaxis2=dict(domain=[0.6, 1.0]),    # Right plot: 60% to 100% (20% gap)
+        )
+    
+    # Axis synchronization is handled by scaleanchor properties in the layout
     
     return fig
