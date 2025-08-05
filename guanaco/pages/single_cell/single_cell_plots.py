@@ -4,7 +4,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import dash
-from dash import dcc, html, Input, Output, exceptions, State, callback_context, ALL
+from dash import dcc, html, Input, Output, exceptions, State, callback_context, ALL, no_update
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.express as px
@@ -542,7 +542,20 @@ def filter_data(adata, annotation, selected_labels, selected_cells=None):
 
 
 def generate_left_control(default_gene_markers, label_list, prefix):
-    genes_selection = dcc.Dropdown(
+    # Radio buttons for input mode selection
+    input_mode_radio = dbc.RadioItems(
+        id=f'{prefix}-gene-input-mode',
+        options=[
+            {'label': 'Dropdown', 'value': 'dropdown'},
+            {'label': 'Text', 'value': 'text'}
+        ],
+        value='dropdown',
+        inline=True,
+        style={'fontSize': '14px', 'marginBottom': '10px'}
+    )
+    
+    # Dropdown for gene selection
+    genes_dropdown = dcc.Dropdown(
         id=f'{prefix}-single-cell-genes-selection',
         options=[{'label': gene, 'value': gene} for gene in default_gene_markers],
         value=default_gene_markers,
@@ -550,6 +563,29 @@ def generate_left_control(default_gene_markers, label_list, prefix):
         style={'marginBottom': '15px', 'font-size': '12px'},
         className='custom-dropdown'
     )
+    
+    # Text area for gene input (initially hidden)
+    genes_textarea = dcc.Textarea(
+        id=f'{prefix}-single-cell-genes-textarea',
+        placeholder='Enter genes separated by commas (e.g., Gene1, Gene2, Gene3)',
+        value=', '.join(default_gene_markers),
+        style={'width': '100%', 'height': '80px', 'marginBottom': '10px', 'display': 'none'},
+        className='custom-textarea'
+    )
+    
+    # Error message div
+    error_message = html.Div(
+        id=f'{prefix}-gene-input-error',
+        style={'color': 'red', 'fontSize': '12px', 'marginBottom': '10px'}
+    )
+    
+    # Container for gene selection
+    genes_selection = html.Div([
+        input_mode_radio,
+        genes_dropdown,
+        genes_textarea,
+        error_message
+    ])
     
     annotation_filter = dcc.Dropdown(
         id=f'{prefix}-single-cell-annotation-dropdown',
@@ -980,6 +1016,90 @@ def single_cell_callbacks(app, adata, prefix):
             'cell_indices': filtered_indices,
             'n_cells': n_filtered
         }, cell_count_text, preview_text
+    
+    # ===== Gene Selection Callbacks =====
+    
+    @app.callback(
+        [Output(f'{prefix}-single-cell-genes-selection', 'style'),
+         Output(f'{prefix}-single-cell-genes-textarea', 'style')],
+        Input(f'{prefix}-gene-input-mode', 'value')
+    )
+    def toggle_gene_input_display(input_mode):
+        if input_mode == 'dropdown':
+            return {'marginBottom': '15px', 'font-size': '12px'}, {'display': 'none'}
+        else:
+            return {'display': 'none'}, {'width': '100%', 'height': '80px', 'marginBottom': '10px'}
+    
+    @app.callback(
+        [Output(f'{prefix}-single-cell-genes-selection', 'value', allow_duplicate=True),
+         Output(f'{prefix}-gene-input-error', 'children')],
+        [Input(f'{prefix}-single-cell-genes-textarea', 'value'),
+         Input(f'{prefix}-gene-input-mode', 'value')],
+        prevent_initial_call=True
+    )
+    def validate_gene_input(textarea_value, input_mode):
+        if input_mode != 'text' or not textarea_value:
+            return no_update, ''
+        
+        # Parse the textarea input - handle various formats
+        # First, check if it looks like a Python list (has brackets)
+        text = textarea_value.strip()
+        if text.startswith('[') and text.endswith(']'):
+            text = text[1:-1]  # Remove brackets
+        elif text.startswith('(') and text.endswith(')'):
+            text = text[1:-1]  # Remove parentheses
+        
+        # Split by comma and clean each gene name
+        input_genes = []
+        for item in text.split(','):
+            # Remove various quote types and whitespace
+            gene = item.strip()
+            # Remove quotes (single, double, backticks, smart quotes)
+            gene = gene.strip('"\'`''""')
+            if gene:  # Only add non-empty strings
+                input_genes.append(gene)
+        
+        # Get all available genes (case-insensitive mapping)
+        available_genes = list(adata.var_names)
+        gene_map = {gene.upper(): gene for gene in available_genes}
+        
+        valid_genes = []
+        invalid_genes = []
+        seen_genes = set()
+        duplicate_genes = []
+        
+        for gene in input_genes:
+            gene_upper = gene.upper()
+            if gene_upper in gene_map:
+                actual_gene = gene_map[gene_upper]
+                if actual_gene not in seen_genes:
+                    valid_genes.append(actual_gene)
+                    seen_genes.add(actual_gene)
+                else:
+                    duplicate_genes.append(gene)
+            else:
+                invalid_genes.append(gene)
+        
+        error_messages = []
+        if invalid_genes:
+            error_messages.append(f"Invalid genes not found: {', '.join(invalid_genes)}")
+        if duplicate_genes:
+            error_messages.append(f"Duplicate genes removed: {', '.join(duplicate_genes)}")
+        
+        error_message = ' | '.join(error_messages)
+        
+        return valid_genes, error_message
+    
+    @app.callback(
+        Output(f'{prefix}-single-cell-genes-textarea', 'value'),
+        Input(f'{prefix}-single-cell-genes-selection', 'value'),
+        State(f'{prefix}-gene-input-mode', 'value'),
+        prevent_initial_call=True
+    )
+    def sync_dropdown_to_textarea(dropdown_value, input_mode):
+        if input_mode == 'dropdown' and dropdown_value:
+            return ', '.join(dropdown_value)
+        return no_update
     
     # ===== Scatter Plot Callbacks =====
     
