@@ -9,7 +9,9 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
-from guanaco.pages.single_cell.cellplotly.embedding import plot_continuous_embedding, plot_coexpression_embedding
+from guanaco.pages.single_cell.cellplotly.embedding import (
+    plot_combined_scatter_subplots
+)
 from guanaco.pages.single_cell.cellplotly.heatmap1 import plot_heatmap1
 from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_heatmap2
 from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
@@ -18,6 +20,9 @@ from guanaco.pages.single_cell.cellplotly.stacked_bar import plot_stacked_bar
 from guanaco.pages.single_cell.cellplotly.dotmatrix_optimized import plot_dot_matrix
 from guanaco.pages.single_cell.cellplotly.pseudotime import plot_genes_in_pseudotime
 
+from guanaco.pages.single_cell.mod020_scatter import (
+    generate_scatter_layout, initialize_scatter_components
+)
 from guanaco.pages.single_cell.mod021_heatmap import generate_heatmap_layout
 from guanaco.pages.single_cell.mod022_violin import generate_violin_layout
 from guanaco.pages.single_cell.mod023_dotplot import generate_dotplot_layout
@@ -25,7 +30,6 @@ from guanaco.pages.single_cell.mod024_stacked_bar import generate_stacked_bar_la
 from guanaco.pages.single_cell.mod025_pseudotime import generate_pseudotime_layout
 
 # Import configs
-from guanaco.config import scatter_config, gene_scatter_config
 from guanaco.data_loader import color_config
 warnings.filterwarnings('ignore', message='.*observed=False.*')
 
@@ -33,498 +37,9 @@ warnings.filterwarnings('ignore', message='.*observed=False.*')
 cvd_color_path = Path(__file__).parent / "cvd_color.json"
 with open(cvd_color_path, "r") as f:
     palette_json = json.load(f)
-palette_names = list(palette_json["color_palettes"].keys())
 
 
-# ============= Scatter Plot Helper Functions =============
-# Note: The main scatter layout is now in mod020_scatter.py
-
-def initialize_scatter_components(adata):
-    embedding_prefixes = {
-        "X_umap": "UMAP", "X_pca": "PCA", "X_tsne": "t-SNE", "X_diffmap": "DiffMap",
-        "X_phate": "PHATE", "X_draw_graph_fa": "FA"
-    }
-    
-    obsm_list = list(adata.obsm.keys())
-    embedding_columns = {
-        key: [f'{embedding_prefixes.get(key, key.upper())}{i+1}' for i in range(adata.obsm[key].shape[1])]
-        for key in obsm_list
-    }
-    default_embedding = obsm_list[-1]
-    default_columns = embedding_columns[default_embedding]
-    
-    return obsm_list, embedding_columns, default_embedding, default_columns
-
-
-def create_control_components(adata, prefix):
-    obsm_list, _, default_embedding, default_columns = initialize_scatter_components(adata)
-    clustering_dropdown = dcc.Dropdown(
-        id=f'{prefix}-clustering-dropdown',
-        options=[{'label': key.replace("X_", "").upper(), 'value': key} for key in obsm_list],
-        value='X_umap' if 'X_umap' in obsm_list else default_embedding,
-        placeholder="Select Clustering Method",
-        style={'marginBottom': '15px','fontSize': '14px'},
-        clearable=False
-    )
-    
-    coordinates_dropdowns = html.Div([
-        html.Label("X-axis:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-        dcc.Dropdown(id=f'{prefix}-x-axis', options=[{'label': col, 'value': col} for col in default_columns], value=default_columns[0]),
-        html.Label("Y-axis:", style={'fontWeight': 'bold', 'marginTop': '15px', 'marginBottom': '5px'}),
-        dcc.Dropdown(id=f'{prefix}-y-axis', options=[{'label': col, 'value': col} for col in default_columns], value=default_columns[1])
-    ], style={'marginBottom': '15px','fontSize': '14px'})
-    
-    return clustering_dropdown, coordinates_dropdowns
-
-
-def generate_annotation_dropdown(anno_list, prefix):
-    # Need access to adata to determine which items are genes
-    # For now, create options without gene labels - will be handled by search callback
-    return dcc.Dropdown(id=f'{prefix}-annotation-dropdown', 
-    options=[{'label': label, 'value': label} for label in anno_list],
-    placeholder="Search annotations or genes...", 
-    value = anno_list[0] if anno_list else None,
-    style={'marginBottom': '15px'})
-
-
-def generate_scatter_gene_selection(init_gene_list, prefix):
-    return dcc.Dropdown(id=f'{prefix}-scatter-gene-selection', options=[{'label': label, 'value': label} for label in init_gene_list], 
-    value = init_gene_list[0], placeholder="Search and select a gene...", style={'marginBottom': '15px'})
-
-
-def create_global_metadata_filter(adata, prefix):
-    """Create global metadata filter component"""
-    
-    # Get all categorical metadata columns
-    categorical_columns = []
-    for col in adata.obs.columns:
-        if adata.obs[col].dtype == 'category' or adata.obs[col].dtype == 'object':
-            unique_vals = adata.obs[col].unique()
-            if len(unique_vals) < 100:  # Reasonable limit for categorical
-                categorical_columns.append(col)
-    
-    # Create filter components
-    filter_components = []
-    
-    for col in categorical_columns:
-        unique_values = sorted([str(val) for val in adata.obs[col].unique()])
-        
-        filter_component = html.Div([
-            html.Label(f"{col}:", style={'fontWeight': 'bold', 'marginRight': '10px', 'minWidth': '120px'}),
-            dcc.Dropdown(
-                id={'type': f'{prefix}-global-metadata-filter', 'column': col},
-                options=[{'label': val, 'value': val} for val in unique_values],
-                value=unique_values,  # All selected by default
-                multi=True,
-                placeholder=f"Select {col}...",
-                style={'flex': '1', 'minWidth': '200px'}
-            )
-        ], style={
-            'display': 'flex',
-            'alignItems': 'center',
-            'marginBottom': '8px',
-            'padding': '5px'
-        })
-        
-        filter_components.append(filter_component)
-    
-    # Global filter panel
-    global_filter_panel = html.Div([
-        # Header with cell count
-        html.Div([
-            html.H5("🔍 Global Data Filter", 
-                   style={'margin': '0', 'color': '#2c3e50', 'display': 'inline-block'}),
-            html.Div([
-                html.Span("Active cells: ", style={'fontWeight': 'bold'}),
-                html.Span(
-                    id=f'{prefix}-global-cell-count',
-                    children=f"{adata.n_obs:,}",
-                    style={'color': '#27ae60', 'fontWeight': 'bold', 'fontSize': '16px'}
-                ),
-                html.Span(f" / {adata.n_obs:,} total", style={'color': '#7f8c8d'}),
-                html.Span(
-                    id=f'{prefix}-filter-preview',
-                    children="",
-                    style={'marginLeft': '15px', 'color': '#e67e22', 'fontSize': '14px', 'fontStyle': 'italic'}
-                )
-            ], style={'display': 'inline-block', 'marginLeft': '20px'})
-        ], style={'marginBottom': '15px'}),
-        
-        # Collapsible filter section
-        dbc.Collapse([
-            html.Div(filter_components, style={'maxHeight': '300px', 'overflowY': 'auto'}),
-            
-            # Quick action buttons
-            html.Div([
-                dbc.Button("Select All", id=f'{prefix}-select-all-filters', 
-                          color="success", size="sm", style={'marginRight': '10px'}),
-                dbc.Button("Clear All", id=f'{prefix}-clear-all-filters', 
-                          color="warning", size="sm", style={'marginRight': '10px'}),
-                dbc.Button("Apply Filter", id=f'{prefix}-apply-global-filter', 
-                          color="primary", size="sm", 
-                          style={'fontWeight': 'bold', 'minWidth': '100px'})
-            ], style={'textAlign': 'center', 'marginTop': '15px'})
-            
-        ], id=f'{prefix}-global-filter-collapse', is_open=False),
-        
-        # Toggle button
-        html.Div([
-            dbc.Button(
-                "▼ Show Filters",
-                id=f'{prefix}-toggle-global-filter',
-                color="link",
-                size="sm",
-                style={'padding': '5px 10px', 'textDecoration': 'none'}
-            )
-        ], style={'textAlign': 'center', 'marginTop': '10px'}),
-        
-        # Hidden store for filtered data (start empty for better performance)
-        dcc.Store(id=f'{prefix}-global-filtered-data', data={'cell_indices': None, 'n_cells': adata.n_obs})
-        
-    ], style={
-        'backgroundColor': '#f8f9fa',
-        'border': '2px solid #dee2e6',
-        'borderRadius': '10px',
-        'padding': '15px',
-        'marginBottom': '20px',
-        'boxShadow': '0 2px 4px rgba(0,0,0,0.1)'
-    })
-    
-    return global_filter_panel
-
-
-
-def scatter_layout(adata,prefix):
-
-
-
-    scatter_transformation_selection = html.Div([
-        dbc.RadioItems(
-            id=f'{prefix}-scatter-log-or-zscore',
-            options=[
-                {'label': 'None', 'value':None},
-                {'label': 'Log', 'value': 'log'}
-            ],
-            value='log',
-            inline=True,
-            style={'fontSize': '14px'} 
-        )
-    ])
-
-
-    scatter_order_selection = html.Div([
-        dbc.RadioItems(
-            id=f'{prefix}-plot-order',
-            options=[
-                {'label': 'Max-1st', 'value': 'max'},  # None option with 'False' value
-                {'label': 'Min-1st', 'value': 'min'},
-                {'label': 'Original', 'value': 'original'},
-                {'label': 'Random', 'value': 'random'},
-            ],
-            value='max',
-            inline=True,
-            style={'fontSize': '14px'}
-
-        )
-    ])
-
-    colorscales = px.colors.named_colorscales()
-    # Dropdown for color map selection
-    color_map_dropdown = dcc.Dropdown(
-        id=f"{prefix}-scatter-color-map-dropdown",
-        options=[{"label": scale, "value": scale} for scale in colorscales],
-        value="viridis",  # Default colorscale
-        style={"marginBottom": "10px"},
-        clearable = False
-    )
-
-    color_map_discrete_dropdown = dcc.Dropdown(
-        id=f"{prefix}-discrete-color-map-dropdown",
-        options=[{"label": name, "value": name} for name in palette_names],
-        value=None,
-        placeholder="Default color",
-        style={"marginBottom": "10px"},
-        clearable=True,
-        className="custom-dropdown",
-
-    )
-
-
-    # Slider for marker size
-    marker_size_slider = dcc.Slider(
-        id=f'{prefix}-marker-size-slider',
-        min=1,
-        max=10,
-        value=5,  # Default marker size
-        marks = None,
-        tooltip={"placement": "bottom", "always_visible": True},
-        className="dbc-slider"
-    )
-
-    # Slider for opacity
-    opacity_slider = dcc.Slider(
-        id=f"{prefix}-opacity-slider",
-        min=0.1,
-        max=1.0,
-        value=1,  # Default opacity
-        marks = None,
-        tooltip={"placement": "bottom", "always_visible": True},
-        className="dbc-slider"
-    )
-    # toggle for scatter plot legend
-    scatter_legend_toggle = dbc.RadioItems(
-        id=f'{prefix}-scatter-legend-toggle',
-        options=[
-            {'label': 'on data', 'value': 'on data'},
-            {'label': 'right', 'value': 'right'}
-        ],
-        value='right',
-        inline=True,
-        style={'fontSize': '14px'} 
-    )
-    # Toggle for axis show
-    axis_toggle = dbc.RadioItems(
-        id=f'{prefix}-axis-toggle',
-        options=[
-            {'label': 'Show', 'value': True},
-            {'label': 'Hide', 'value': False}
-        ],
-        value=True,
-        inline=True,
-        style={'fontSize': '14px'}
-    )
-
-    graphic_control = html.Div(
-        id=f"{prefix}-controls-container",
-        children=[
-            html.Div(
-                [
-                    html.Label("Plot order: ", className="control-label"),
-                    scatter_order_selection,
-                ],
-                style={'marginBottom': '15px'}
-            ),
-            html.Div(
-                [
-                    html.Label("Continous ColorMap:",  className="control-label"),
-                    color_map_dropdown,
-                ],
-                className="dbc",
-                style={'marginBottom': '15px'}
-            ),
-            html.Div(
-                [
-                    html.Label("Discrete ColorMap:",  className="control-label"),
-                    color_map_discrete_dropdown,
-                ],
-                className="dbc",
-                style={'marginBottom': '15px'}
-            ),
-            html.Div(
-                [
-                    html.Label("Marker Size:",  className="control-label"),
-                    marker_size_slider,
-                ],
-                style={'marginBottom': '15px'}
-            ),
-            html.Div(
-                [
-                    html.Label("Opacity:",  className="control-label"),
-                    opacity_slider,
-                ],
-                style={'marginBottom': '15px'}
-            ),
-            html.Div(
-                [
-                    html.Label("Legend Location:",  className="control-label"),
-                    scatter_legend_toggle,
-                ],
-                style={'marginBottom': '15px'}
-            ),
-            html.Div(
-                [
-                    html.Label("Axis:",  className="control-label"),
-                    axis_toggle,
-                ],
-                style={'marginBottom': '15px'}
-            ),
-        ],
-        style={'display': 'none'}  # hidden by default
-    )
-    anno_list = adata.obs.columns.tolist()
-    sample_genes = adata.var_names[:20].tolist()
-    anno_list.extend(sample_genes)
-
-    clustering_dropdown, coordinates_dropdowns = create_control_components(adata, prefix)
-    layout = html.Div([
-        # Add Store component to hold selected cells data
-        dcc.Store(id=f'{prefix}-selected-cells-store'),
-        
-        # Add global metadata filter at the top
-        create_global_metadata_filter(adata, prefix),
-        
-        dbc.Row([
-            # Left column: Controls
-            dbc.Col(
-            html.Div(
-                [
-                    html.Div(
-                        [
-                            html.Label("Dimension Reduction:", className = "control-label"),
-                            clustering_dropdown,
-                        ],
-                        className="dbc",
-                        style={'marginBottom': '15px'}
-                    ),
-                    html.Div(
-                        [
-                            html.Div(coordinates_dropdowns, id=f'{prefix}-coordinates-dropdowns')
-                        ],
-                        className="dbc",
-                        style={'marginBottom': '15px'}
-                    ),
-                    html.Div(
-                        [
-                            html.Label("Transformation:",  className = "control-label"),
-                            scatter_transformation_selection,
-                        ],
-                        style={'marginBottom': '15px'}
-                    ),
-                    html.Button("More controls", id=f"{prefix}-toggle-button", n_clicks=0, style={'marginBottom': '10px','border':'1px solid','borderRadius': '5px'}),
-
-                    graphic_control,
-                ],
-            ),
-            xs=12, sm=12, md=4, lg=4, xl=2, 
-            style={"borderRight": "1px solid #ddd", "padding": "10px"}
-        ),
-
-    dbc.Col(
-        html.Div(
-            [
-                html.Label("Select Annotation/Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-                generate_annotation_dropdown(anno_list=anno_list, prefix=prefix),
-                dcc.Loading(
-                    id=f"{prefix}-loading-annotaion-scatter",
-                    type="circle",
-                    children=dcc.Graph(id=f'{prefix}-annotation-scatter', config=scatter_config),
-                    style={"height": "100%"},
-                ),
-                # Add button below the scatter plot
-                html.Div([
-                    dbc.Row([
-                        dbc.Col([
-                            dbc.Button(
-                                "Update other Plots",
-                                id=f"{prefix}-update-plots-button",
-                                color="primary",
-                                n_clicks=0,
-                                style={'width': '100%'}
-                            ),
-                        ], width=8),
-                        dbc.Col([
-                            dbc.InputGroup([
-                                dbc.DropdownMenu(
-                                    [
-                                        dbc.DropdownMenuItem("Cell IDs (.txt)", id=f"{prefix}-download-cellids"),
-                                        dbc.DropdownMenuItem("Subset AnnData (.h5ad)", id=f"{prefix}-download-adata"),
-                                    ],
-                                    label="Download",
-                                    color="secondary",
-                                    id=f"{prefix}-download-menu",
-                                    disabled=True
-                                ),
-                                dcc.Download(id=f"{prefix}-download-cells-data")
-                            ], style={'width': '100%'})
-                        ], width=4)
-                    ], style={'marginTop': '10px'}),
-                    html.Div(id=f"{prefix}-selection-status", style={'textAlign': 'center', 'marginTop': '5px'})
-                ]),
-            ],
-            className="dbc",
-            style={'marginBottom': '20px'}
-        ),
-        xs=12, sm=12, md=4, lg=4, xl=5 # Full width on small screens, half on larger screens
-    ),
-    dbc.Col(
-        html.Div(
-            [
-                html.Label("Search Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-                generate_scatter_gene_selection(init_gene_list=adata.var_names.to_list()[:10], prefix=prefix),
-                # Add toggle for co-expression mode
-                dbc.RadioItems(
-                    id=f'{prefix}-coexpression-toggle',
-                    options=[
-                        {'label': 'Single Gene', 'value': 'single'},
-                        {'label': 'Co-expression', 'value': 'coexpression'}
-                    ],
-                    value='single',
-                    inline=True,
-                    style={'marginBottom': '10px', 'fontSize': '14px'}
-                ),
-                # Second gene selection (hidden by default)
-                html.Div(
-                    [
-                        html.Label("Second Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-                        dcc.Dropdown(
-                            id=f'{prefix}-scatter-gene2-selection',
-                            options=[{'label': label, 'value': label} for label in adata.var_names.to_list()[:10]],
-                            value=adata.var_names.to_list()[1],
-                            placeholder="Search and select second gene...",
-                            style={'marginBottom': '10px'}
-                        ),
-                    ],
-                    id=f'{prefix}-gene2-container',
-                    style={'display': 'none'}
-                ),
-                # Threshold sliders 
-                html.Div(
-                    [
-                        html.Label("Expression Thresholds:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-                        html.Div([
-                            html.Label("Gene 1 Threshold:", style={'fontSize': '12px'}),
-                            dcc.Slider(
-                                id=f'{prefix}-gene1-threshold-slider',
-                                min=0,
-                                max=1,
-                                value=0.5,
-                                marks=None,
-                                tooltip={"placement": "bottom", "always_visible": True},
-                                className="dbc-slider"
-                            ),
-                        ], style={'marginBottom': '10px'}),
-                        html.Div([
-                            html.Label("Gene 2 Threshold:", style={'fontSize': '12px'}),
-                            dcc.Slider(
-                                id=f'{prefix}-gene2-threshold-slider',
-                                min=0,
-                                max=1,
-                                value=0.5,
-                                marks=None,
-                                tooltip={"placement": "bottom", "always_visible": True},
-                                className="dbc-slider"
-                            ),
-                        ], style={'marginBottom': '10px'}),
-                    ],
-                    id=f'{prefix}-threshold-container',
-                    style={'display': 'none'}
-                ),
-                dcc.Loading(
-                    id=f"{prefix}-loading-gene-scatter",
-                    type="circle",
-                    children=dcc.Graph(id=f'{prefix}-gene-scatter', config=gene_scatter_config),
-                    style={"height": "100%"},
-                ),
-            ],
-            className="dbc",
-            style={'marginBottom': '20px','marginRight': '10px'}
-        ),
-        xs=12, sm=12, md=4, lg=4, xl=5  # Full width on small screens, half on larger screens
-    ),
-        ])
-    ])
-
-    return layout
+# ============= Helper Functions =============
 
 
 def filter_data(adata, annotation, selected_labels, selected_cells=None):
@@ -656,255 +171,6 @@ def is_continuous_annotation(adata, annotation, threshold=50):
         n_unique = adata.obs[annotation].nunique()
         return n_unique >= threshold
     return False
-
-def plot_categorical_embedding_with_fixed_colors(
-    adata, adata_full, gene, embedding_key, color,
-    x_axis=None, y_axis=None,
-    color_map=None, marker_size=5, opacity=1,
-    legend_show='on legend', axis_show=True
-):
-    """
-    Wrapper around plot_categorical_embedding that ensures color consistency
-    by using all categories from the full dataset for color mapping.
-    """
-    # Get all unique labels from the full dataset to ensure consistent colors
-    all_unique_labels = sorted(adata_full.obs[color].unique())
-    
-    # Create color mapping for ALL categories (not just filtered ones)
-    color_map = color_map or px.colors.qualitative.Plotly
-    label_to_color_dict = {
-        label: color_map[i % len(color_map)]
-        for i, label in enumerate(all_unique_labels)
-    }
-    
-    embedding_prefixes = {
-        "X_umap": "UMAP", "X_pca": "PCA", "X_tsne": "t-SNE",
-        "X_diffmap": "DiffMap", "X_phate": "PHATE", "X_draw_graph_fa": "FA"
-    }
-    on_data = legend_show == 'on data'
-
-    # Prepare embedding coordinates
-    embedding_data = adata.obsm[embedding_key]
-    prefix = embedding_prefixes.get(embedding_key, embedding_key.upper())
-    dims = [f"{prefix}{i+1}" for i in range(embedding_data.shape[1])]
-    x_axis = x_axis or dims[0]
-    y_axis = y_axis or (dims[1] if len(dims) > 1 else dims[0])
-
-    # Prepare DataFrame
-    df = pd.DataFrame(embedding_data, columns=dims)
-    df[color] = adata.obs[color].values
-    
-    # Only extract gene expression if gene is provided
-    if gene is not None and gene in adata.var_names:
-        from guanaco.pages.single_cell.cellplotly.gene_extraction_utils import extract_gene_expression
-        df[gene] = extract_gene_expression(adata, gene)
-
-    # Get unique labels in the filtered data
-    unique_labels_filtered = sorted(df[color].unique())
-
-    fig = go.Figure()
-    
-    # First, add a grey background trace for all cells
-    fig.add_trace(go.Scattergl(
-        x=df[x_axis],
-        y=df[y_axis],
-        mode='markers',
-        marker=dict(
-            size=marker_size,
-            color='lightgrey',
-            opacity=opacity * 0.3,
-        ),
-        name='Background',
-        hoverinfo='skip',
-        showlegend=False,
-        visible=True
-    ))
-
-    # Add one trace per category (only for categories present in filtered data)
-    for label in unique_labels_filtered:
-        mask = df[color] == label
-        fig.add_trace(go.Scattergl(
-            x=df.loc[mask, x_axis],
-            y=df.loc[mask, y_axis],
-            mode='markers',
-            marker=dict(
-                size=marker_size,
-                color=label_to_color_dict[label],  # Use color from full dataset mapping
-                opacity=opacity,
-            ),
-            name=str(label),
-            customdata=df.loc[mask, color] if gene is None else np.stack([df.loc[mask, color], df.loc[mask, gene]], axis=-1),
-            hoverinfo='skip',  # Disable hover
-            showlegend=not on_data,
-            legendgroup=str(label),
-        ))
-
-    # Add labels at cluster medians if requested
-    if on_data:
-        for label in unique_labels_filtered:
-            mask = df[color] == label
-            median_x = df.loc[mask, x_axis].median()
-            median_y = df.loc[mask, y_axis].median()
-            fig.add_annotation(
-                x=median_x, y=median_y,
-                text=f"<b>{label}</b>",
-                showarrow=False,
-                font=dict(size=12, color='black'),
-                xanchor='center', yanchor='middle',
-                opacity=0.9,
-            )
-
-    # Layout settings
-    fig.update_layout(
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        title=dict(text=f"<b>{color}</b>", x=0.5, y=0.95, xanchor='center', yanchor='bottom'),
-        xaxis=dict(
-            title=x_axis,
-            showgrid=False, zeroline=False,
-            scaleanchor='y', constrain='domain',
-            tickfont=dict(color="rgba(0,0,0,0)" if not axis_show else "black")
-        ),
-        yaxis=dict(
-            title=y_axis,
-            showgrid=False, zeroline=False,
-            constrain='domain',
-            tickfont=dict(color="rgba(0,0,0,0)" if not axis_show else "black")
-        ),
-        legend=dict(
-            orientation='v',
-            itemsizing='constant',
-            x=1.02, y=0.5,
-            bgcolor='rgba(0,0,0,0)',
-            itemclick='toggle',
-            itemdoubleclick='toggleothers',
-            font=dict(size=10)
-        ) if not on_data else None,
-        margin=dict(t=60, r=10, l=10, b=40)
-    )
-
-    fig.update_xaxes(showline=True, linewidth=2, linecolor='black')
-    fig.update_yaxes(showline=True, linewidth=2, linecolor='black')
-
-    return fig
-
-def plot_continuous_annotation(
-    adata, embedding_key, annotation, x_axis=None, y_axis=None,
-    transformation=None, order=None, color_map='Viridis',
-    marker_size=5, opacity=1, axis_show=True
-):
-    """
-    Plot a continuous annotation (from obs) on a 2D embedding.
-    Modified to work with obs columns instead of gene expression.
-    """
-
-    
-    embedding_prefixes = {
-        'X_umap': 'UMAP', 'X_pca': 'PCA', 'X_tsne': 't-SNE',
-        'X_diffmap': 'DiffMap', 'X_phate': 'PHATE', 'X_draw_graph_fa': 'FA'
-    }
-    embedding_prefix = embedding_prefixes.get(embedding_key, embedding_key.upper())
-    embedding_data = adata.obsm[embedding_key]
-
-    # Set column names for the embedding
-    num_dimensions = embedding_data.shape[1]
-    embedding_columns = [f'{embedding_prefix}{i + 1}' for i in range(num_dimensions)]
-    embedding_df = pd.DataFrame(embedding_data, columns=embedding_columns)
-
-    # Default x and y axis
-    x_axis = x_axis or embedding_columns[0]
-    y_axis = y_axis or (embedding_columns[1] if len(embedding_columns) > 1 else embedding_columns[0])
-
-    # Extract annotation values (from obs instead of expression)
-    annotation_values = adata.obs[annotation].values
-    
-    # Only apply transformations if explicitly requested and data is numeric
-    # For annotation data, we usually want to see the raw values
-    if transformation and annotation_values.dtype in ['float32', 'float64', 'int32', 'int64']:
-        if transformation == 'log':
-            # Handle negative values for log transformation
-            min_val = annotation_values.min()
-            if min_val <= 0:
-                annotation_values = annotation_values - min_val + 1
-            annotation_values = np.log1p(annotation_values)
-        elif transformation == 'z_score':
-            annotation_values = (annotation_values - np.mean(annotation_values)) / np.std(annotation_values)
-
-    embedding_df[annotation] = annotation_values
-    # Add cell indices for selection tracking
-    embedding_df['_cell_idx'] = np.arange(len(embedding_df))
-
-    # Sort order
-    if order == 'max':
-        embedding_df_sorted = embedding_df.sort_values(by=annotation)
-    elif order == 'min':
-        embedding_df_sorted = embedding_df.sort_values(by=annotation, ascending=False)
-    elif order == 'random':
-        embedding_df_sorted = embedding_df.sample(frac=1, random_state=315).reset_index(drop=True)
-    else:
-        embedding_df_sorted = embedding_df
-
-    # Create scatter plot
-    fig = go.Figure()
-    fig.add_trace(go.Scattergl(
-        x=embedding_df_sorted[x_axis],
-        y=embedding_df_sorted[y_axis],
-        mode='markers',
-        marker=dict(
-            color=embedding_df_sorted[annotation],
-            colorscale=color_map,
-            cmin=embedding_df_sorted[annotation].min(),
-            cmax=embedding_df_sorted[annotation].max(),
-            size=marker_size,
-            opacity=opacity,
-            colorbar=dict(
-                title=f"{annotation}<br>{transformation if transformation else ''}",
-                len=0.8
-            )
-        ),
-        customdata=np.stack([embedding_df_sorted[annotation], embedding_df_sorted['_cell_idx']], axis=-1),  # Add customdata with cell index
-        hoverinfo='skip',  # Disable hover
-        selectedpoints=None,  # Enable selection
-        selected=dict(marker=dict(opacity=1)),  # Keep selected points fully visible
-        unselected=dict(marker=dict(opacity=0.2))  # Dim unselected points
-    ))
-
-    fig.update_layout(
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        title=dict(
-            text=f'<b>{annotation}</b>',
-            x=0.5,
-            y=0.95,
-            xanchor='center',
-            yanchor='bottom'
-        ),
-        xaxis=dict(
-            title=x_axis,
-            showgrid=False,
-            zeroline=False,
-            scaleanchor='y',
-            constrain='domain'
-        ),
-        yaxis=dict(
-            title=y_axis,
-            showgrid=False,
-            zeroline=False,
-            constrain='domain'
-        ),
-        margin=dict(t=60, r=10, l=10, b=40)
-    )
-
-    fig.update_xaxes(
-        showline=True, linewidth=2, linecolor='black',
-        tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
-    )
-    fig.update_yaxes(
-        showline=True, linewidth=2, linecolor='black',
-        tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
-    )
-
-    return fig
 
 # ============= Main Callback Functions =============
 
@@ -1104,6 +370,19 @@ def single_cell_callbacks(app, adata, prefix):
     # ===== Scatter Plot Callbacks =====
     
     @app.callback(
+        [Output(f'{prefix}-gene-selection-col', 'style'),
+         Output(f'{prefix}-coexpression-controls-row', 'style')],
+        Input(f'{prefix}-plot-mode-toggle', 'value')
+    )
+    def toggle_plot_mode_controls(plot_mode):
+        if plot_mode == 'single':
+            # Hide gene selection and coexpression controls in single plot mode
+            return {'display': 'none'}, {'display': 'none'}
+        else:
+            # Show both in dual plot mode
+            return {}, {}
+    
+    @app.callback(
         Output(f"{prefix}-controls-container", "style"),
         Output(f"{prefix}-toggle-button", "children"),
         Input(f"{prefix}-toggle-button", "n_clicks"),
@@ -1228,62 +507,26 @@ def single_cell_callbacks(app, adata, prefix):
         else:
             plot_adata = adata
         
-        # Check if annotation is a gene or metadata
-        if annotation in adata.var_names:
-            # This is a gene - use continuous gene plotting
-            color_map = continuous_color_map or 'Viridis'
-            
-            fig = plot_continuous_embedding(
-                adata=plot_adata,
-                embedding_key=clustering_method,
-                color=annotation,
-                x_axis=x_axis,
-                y_axis=y_axis,
-                transformation=transformation,
-                order=order,
-                color_map=color_map,
-                marker_size=marker_size,
-                opacity=opacity,
-                axis_show=axis_show,
-            )
-        elif is_continuous_annotation(adata, annotation):
-            # Use continuous annotation plotting
-            color_map = continuous_color_map or 'Viridis'
-            
-            fig = plot_continuous_annotation(
-                adata=plot_adata,
-                embedding_key=clustering_method,
-                annotation=annotation,
-                x_axis=x_axis,
-                y_axis=y_axis,
-                transformation=None,  # Disable transformation for annotation data
-                order=order,
-                color_map=color_map,
-                marker_size=marker_size,
-                opacity=opacity,
-                axis_show=axis_show,
-            )
-        else:
-            # Use categorical plotting
-            if discrete_color_map is None:
-                color_map = color_config
-            else:
-                color_map = palette_json["color_palettes"][discrete_color_map]
-            
-            fig = plot_categorical_embedding_with_fixed_colors(
-                adata=plot_adata,
-                adata_full=adata,  # Pass full adata for color reference
-                gene=None,  # Don't pass gene to avoid unnecessary computation
-                embedding_key=clustering_method,
-                color=annotation,
-                x_axis=x_axis,
-                y_axis=y_axis,
-                color_map=color_map,
-                marker_size=marker_size,
-                opacity=opacity,
-                legend_show=legend_show,
-                axis_show=axis_show,
-            )
+        # Use unified scatter plotting - create single plot by using same annotation for both plots
+        fig = plot_combined_scatter_subplots(
+            adata=plot_adata,
+            adata_full=adata,
+            embedding_key=clustering_method,
+            annotation=annotation,
+            gene=annotation,  # Use same annotation for both sides to create single plot effect
+            x_axis=x_axis,
+            y_axis=y_axis,
+            transformation=transformation if annotation in adata.var_names else None,
+            order=order,
+            annotation_type='auto',  # Let function auto-detect
+            gene_plot_type='single',
+            color_map=continuous_color_map or 'Viridis',
+            color_map_discrete=discrete_color_map,
+            marker_size=marker_size,
+            opacity=opacity,
+            legend_show=legend_show,
+            axis_show=axis_show
+        )
         
         # Enable selection mode and set height to match CSS
         fig.update_layout(
@@ -1314,7 +557,7 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-scatter-color-map-dropdown', 'value'),
          Input(f'{prefix}-marker-size-slider', 'value'),
          Input(f'{prefix}-opacity-slider', 'value'),
-         Input(f'{prefix}-annotation-scatter', 'relayoutData'),
+         Input(f'{prefix}-combined-scatter', 'relayoutData'),
          Input(f'{prefix}-axis-toggle', 'value'),
          Input(f'{prefix}-coexpression-toggle', 'value'),
          Input(f'{prefix}-scatter-gene2-selection', 'value'),
@@ -1338,40 +581,28 @@ def single_cell_callbacks(app, adata, prefix):
         else:
             plot_adata = adata
         
-        if coexpression_mode == 'coexpression' and gene2_name:
-            # Use co-expression visualization
-            fig = plot_coexpression_embedding(
-                adata=plot_adata,
-                embedding_key=clustering,
-                gene1=gene_name,
-                gene2=gene2_name,
-                x_axis=x_axis,
-                y_axis=y_axis,
-                threshold1=threshold1,
-                threshold2=threshold2,
-                transformation=transformation,
-                color_map=None,  # Use default colors for co-expression
-                marker_size=marker_size,
-                opacity=opacity,
-                legend_show=legend_show,
-                axis_show=axis_show,
-            )
-        else:
-            # Use single gene visualization
-            fig = plot_continuous_embedding(
-                adata=plot_adata,
-                embedding_key=clustering,
-                color=gene_name,
-                x_axis=x_axis,
-                y_axis=y_axis,
-                transformation=transformation,
-                order=order,
-                color_map=color_map or 'Viridis',
-                marker_size=marker_size,
-                opacity=opacity,
-                annotation=None,
-                axis_show=axis_show,
-            )
+        # Use unified scatter plotting - create single plot by using same gene for both plots
+        fig = plot_combined_scatter_subplots(
+            adata=plot_adata,
+            adata_full=adata,
+            embedding_key=clustering,
+            annotation=gene_name,  # Use same gene for both sides to create single plot effect
+            gene=gene_name,
+            x_axis=x_axis,
+            y_axis=y_axis,
+            transformation=transformation,
+            order=order,
+            annotation_type='gene',  # Specify this is a gene
+            gene_plot_type='coexpression' if coexpression_mode == 'coexpression' and gene2_name else 'single',
+            gene2=gene2_name if coexpression_mode == 'coexpression' else None,
+            threshold1=threshold1,
+            threshold2=threshold2,
+            color_map=color_map or 'Viridis',
+            marker_size=marker_size,
+            opacity=opacity,
+            legend_show=legend_show,
+            axis_show=axis_show
+        )
         
         # Always fix aspect ratio first
         fig.update_layout(
@@ -1404,6 +635,96 @@ def single_cell_callbacks(app, adata, prefix):
                 )
             )
             
+        return fig
+    
+    # ===== Combined Scatter Plot Callback =====
+    @app.callback(
+        Output(f'{prefix}-combined-scatter', 'figure'),
+        [Input(f'{prefix}-annotation-dropdown', 'value'),
+         Input(f'{prefix}-scatter-gene-selection', 'value'),
+         Input(f'{prefix}-clustering-dropdown', 'value'),
+         Input(f'{prefix}-x-axis', 'value'),
+         Input(f'{prefix}-y-axis', 'value'),
+         Input(f'{prefix}-scatter-log-or-zscore', 'value'),
+         Input(f'{prefix}-plot-order', 'value'),
+         Input(f'{prefix}-scatter-color-map-dropdown', 'value'),
+         Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
+         Input(f'{prefix}-marker-size-slider', 'value'),
+         Input(f'{prefix}-opacity-slider', 'value'),
+         Input(f'{prefix}-scatter-legend-toggle', 'value'),
+         Input(f'{prefix}-axis-toggle', 'value'),
+         Input(f'{prefix}-coexpression-toggle', 'value'),
+         Input(f'{prefix}-scatter-gene2-selection', 'value'),
+         Input(f'{prefix}-gene1-threshold-slider', 'value'),
+         Input(f'{prefix}-gene2-threshold-slider', 'value'),
+         Input(f'{prefix}-global-filtered-data', 'data'),
+         Input(f'{prefix}-plot-mode-toggle', 'value'),
+        ],
+        prevent_initial_call=False  # Allow initial call to render plot immediately
+    )
+    def update_combined_scatter(annotation, gene_name, clustering, x_axis, y_axis, 
+                               transformation, order, continuous_color_map, discrete_color_map,
+                               marker_size, opacity, legend_show, axis_show,
+                               coexpression_mode, gene2_name, threshold1, threshold2, filtered_data, plot_mode):
+        
+        # Early exit if critical parameters are missing - show empty plot immediately
+        if not annotation or not clustering or not x_axis or not y_axis:
+            return go.Figure().update_layout(
+                title="Loading scatter plot...",
+                xaxis_title="",
+                yaxis_title="",
+                plot_bgcolor='white'
+            )
+        
+        # In single plot mode, only require annotation, not gene_name
+        if plot_mode == 'dual' and not gene_name:
+            raise exceptions.PreventUpdate
+        
+        # Only use filtered data if filter has actually been applied
+        # During initial load, filtered_data will be None (empty store)
+        if (filtered_data and 
+            isinstance(filtered_data, dict) and
+            filtered_data.get('cell_indices') is not None and 
+            len(filtered_data.get('cell_indices', [])) > 0 and
+            filtered_data.get('n_cells', adata.n_obs) < adata.n_obs):
+            plot_adata = adata[filtered_data['cell_indices']]
+        else:
+            # Use original data (no filtering applied or initial load)
+            plot_adata = adata
+        
+        # Determine annotation type
+        annotation_type = 'auto'  # Let the function auto-detect
+        
+        # Force single plot mode by setting gene = annotation when plot_mode is 'single'
+        if plot_mode == 'single':
+            effective_gene = annotation  # This will trigger single plot mode in embedding.py
+        else:
+            effective_gene = gene_name
+        
+        # Create combined subplot figure
+        fig = plot_combined_scatter_subplots(
+            adata=plot_adata,
+            adata_full=adata,  # Pass full dataset for consistent color mapping
+            embedding_key=clustering,
+            annotation=annotation,
+            gene=effective_gene,
+            x_axis=x_axis,
+            y_axis=y_axis,
+            transformation=transformation,
+            order=order,
+            annotation_type=annotation_type,
+            gene_plot_type='coexpression' if coexpression_mode == 'coexpression' and plot_mode == 'dual' else 'single',
+            gene2=gene2_name if coexpression_mode == 'coexpression' and plot_mode == 'dual' else None,
+            threshold1=threshold1,
+            threshold2=threshold2,
+            color_map=continuous_color_map or 'Viridis',
+            color_map_discrete=discrete_color_map,
+            marker_size=marker_size,
+            opacity=opacity,
+            legend_show=legend_show,
+            axis_show=axis_show
+        )
+        
         return fig
     
     # ===== Threshold Slider Update Callback =====
@@ -1479,7 +800,7 @@ def single_cell_callbacks(app, adata, prefix):
         Output(f'{prefix}-selected-cells-store', 'data'),
         Output(f'{prefix}-selection-status', 'children'),
         [Input(f'{prefix}-update-plots-button', 'n_clicks')],
-        [State(f'{prefix}-annotation-scatter', 'selectedData'),
+        [State(f'{prefix}-combined-scatter', 'selectedData'),
          State(f'{prefix}-annotation-dropdown', 'value'),
          State(f'{prefix}-global-filtered-data', 'data')],  # Add global filtered data
         prevent_initial_call=True
@@ -1514,62 +835,36 @@ def single_cell_callbacks(app, adata, prefix):
         
         # Get the actual cell indices
         selected_indices = []
+        seen_indices = set()  # To avoid duplicates
         
-        # Check if this is continuous data (including genes) or categorical data
-        if current_annotation in adata.var_names or is_continuous_annotation(plot_adata, current_annotation):
-            # For continuous data and genes - use customdata for cell indices
-            for point in selected_points:
-                if 'customdata' in point:
-                    customdata = point['customdata']
-                    # Handle both single values and arrays
-                    if isinstance(customdata, (list, tuple)) and len(customdata) > 1:
-                        # The second element in customdata is the cell index (for genes with annotation data)
-                        cell_idx = int(customdata[1])
-                    else:
-                        # Single value customdata contains the cell index directly
-                        cell_idx = int(customdata)
+        # Process all points from the selection
+        for point in selected_points:
+            if 'customdata' in point:
+                customdata = point['customdata']
+                cell_idx = None
+                
+                # Handle different customdata formats
+                if isinstance(customdata, (list, tuple)) and len(customdata) > 0:
+                    # For arrays, try to find the cell index
+                    for item in customdata:
+                        if isinstance(item, (int, float)) and 0 <= item < len(plot_adata):
+                            cell_idx = int(item)
+                            break
+                elif isinstance(customdata, (int, float)):
+                    # Single value customdata contains the cell index directly
+                    cell_idx = int(customdata)
+                
+                # Add valid indices
+                if cell_idx is not None and 0 <= cell_idx < len(plot_adata) and cell_idx not in seen_indices:
+                    seen_indices.add(cell_idx)
                     selected_indices.append(plot_adata.obs.index[cell_idx])
-                else:
-                    # Fallback to point number if customdata is not available
-                    point_number = point.get('pointNumber', 0)
-                    selected_indices.append(plot_adata.obs.index[point_number])
-        else:
-            # For categorical data - use customdata with category names to find cells
-            for point in selected_points:
-                curve_number = point.get('curveNumber', 0)
+            else:
+                # Fallback to point number if customdata is not available
                 point_number = point.get('pointNumber', 0)
-                
-                # Skip the background trace (curve_number 0 is the grey background)
-                if curve_number == 0:
-                    continue
-                
-                if 'customdata' in point:
-                    # Get category from customdata
-                    customdata = point['customdata']
-                    if isinstance(customdata, (list, tuple)):
-                        category = customdata[0]  # Category is first element
-                    else:
-                        category = customdata
-                    
-                    # Find all cells with this category
-                    category_mask = plot_adata.obs[current_annotation] == category
-                    category_indices = plot_adata.obs.index[category_mask].tolist()
-                    
-                    # The point_number is the index within this category
-                    if point_number < len(category_indices):
-                        selected_indices.append(category_indices[point_number])
-                else:
-                    # Fallback to original logic
-                    unique_categories = sorted(plot_adata.obs[current_annotation].unique())
-                    category_index = curve_number - 1
-                    
-                    if category_index >= 0 and category_index < len(unique_categories):
-                        selected_category = unique_categories[category_index]
-                        category_mask = plot_adata.obs[current_annotation] == selected_category
-                        category_indices = plot_adata.obs.index[category_mask].tolist()
-                        
-                        if point_number < len(category_indices):
-                            selected_indices.append(category_indices[point_number])
+                if 0 <= point_number < len(plot_adata) and point_number not in seen_indices:
+                    seen_indices.add(point_number)
+                    selected_indices.append(plot_adata.obs.index[point_number])
+        
         
         if selected_indices:
             n_selected = len(selected_indices)

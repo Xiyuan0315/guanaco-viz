@@ -9,7 +9,7 @@ common_config = {
     'modeBarButtonsToRemove': ['select', 'lasso2d', 'pan2d', 'zoom2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'pan', 'zoom', 'resetScale2d']
 }
 
-# Annotation scatter config (left side) - with selection tools
+# Annotation scatter config (left side) - with zoom tools
 scatter_config = {
     'responsive': True,
     'toImageButtonOptions': {
@@ -19,12 +19,12 @@ scatter_config = {
     },
     'displaylogo': False,
     'scrollZoom': False,  # Disable scroll to zoom
-    'dragmode': 'pan',   # Default drag mode is pan
+    'dragmode': 'zoom',   # Default drag mode is zoom (box zoom)
     'doubleClick': 'reset',  # Double click to reset zoom
     'showTips': False,  # Reduce hover updates
     'frameMargins': 0,  # Reduce margin calculations
-    'modeBarButtonsToRemove': ['select', 'zoom2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'zoom', 'resetScale2d'],
-    'modeBarButtonsToAdd': ['select2d', 'lasso2d', 'pan2d']  # Selection tools for cell selection
+    'modeBarButtonsToRemove': ['select', 'autoScale2d', 'resetScale2d', 'zoomIn2d', 'zoomOut2d'],
+    'modeBarButtonsToAdd': ['lasso2d', 'zoom2d', 'pan2d']  # Lasso selection, box zoom, and pan
 }
 
 # Gene scatter config (right side) - pan only, no selection tools

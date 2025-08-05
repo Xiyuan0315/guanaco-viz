@@ -6,7 +6,6 @@ from pathlib import Path
 from dash import dcc, html
 import dash_bootstrap_components as dbc
 import plotly.express as px
-
 # Import configs
 from guanaco.config import scatter_config, gene_scatter_config
 
@@ -158,8 +157,8 @@ def create_global_metadata_filter(adata, prefix):
             )
         ], style={'textAlign': 'center', 'marginTop': '10px'}),
         
-        # Hidden store for filtered data (start empty for better performance)
-        dcc.Store(id=f'{prefix}-global-filtered-data', data={'cell_indices': None, 'n_cells': adata.n_obs})
+        # Hidden store for filtered data (start completely empty to prevent initial processing)
+        dcc.Store(id=f'{prefix}-global-filtered-data')
         
     ], style={
         'backgroundColor': '#f8f9fa',
@@ -269,6 +268,7 @@ def generate_scatter_layout(adata, prefix):
         inline=True,
         style={'fontSize': '14px'}
     )
+    
 
     graphic_control = html.Div(
         id=f"{prefix}-controls-container",
@@ -381,6 +381,23 @@ def generate_scatter_layout(adata, prefix):
         dbc.Col(
             html.Div(
                 [
+                    # Plot mode toggle
+                    dbc.Row([
+                        dbc.Col([
+                            html.Label("Plot Mode:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                            dbc.RadioItems(
+                                id=f'{prefix}-plot-mode-toggle',
+                                options=[
+                                    {'label': 'Single Plot', 'value': 'single'},
+                                    {'label': 'Dual Plots', 'value': 'dual'}
+                                ],
+                                value='single',
+                                inline=True,
+                                style={'marginBottom': '10px', 'fontSize': '14px'}
+                            ),
+                        ], width=12),
+                    ], style={'marginBottom': '10px'}),
+                    
                     # Controls row for both plots
                     dbc.Row([
                         dbc.Col([
@@ -390,7 +407,7 @@ def generate_scatter_layout(adata, prefix):
                         dbc.Col([
                             html.Label("Search Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
                             generate_scatter_gene_selection(init_gene_list=adata.var_names.to_list()[:10], prefix=prefix),
-                        ], width=6),
+                        ], width=6, id=f'{prefix}-gene-selection-col'),
                     ], style={'marginBottom': '10px'}),
                     
                     # Co-expression controls
@@ -458,7 +475,7 @@ def generate_scatter_layout(adata, prefix):
                                 style={'display': 'none'}
                             ),
                         ], width=6),
-                    ]),
+                    ], id=f'{prefix}-coexpression-controls-row'),
                     
                     # Combined scatter plot and buttons container using flexbox
                     html.Div([
@@ -527,9 +544,9 @@ def generate_scatter_layout(adata, prefix):
                     ], style={
                         "display": "flex",
                         "flexDirection": "column",
-                        "height": "70vh",  # Increased container height to accommodate legend
-                        "minHeight": "550px",  # Increased minimum height for legend space
-                        "maxHeight": "750px"   # Increased maximum height
+                        "height": "70vh",  # Container height
+                        "minHeight": "550px",  # Minimum height
+                        "flex-grow": "1"  # Allow container to grow with draggable content
                     }),
                 ],
                 className="dbc",
