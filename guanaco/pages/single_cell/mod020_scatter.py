@@ -373,7 +373,7 @@ def generate_scatter_layout(adata, prefix):
                     graphic_control,
                 ],
             ),
-            xs=12, sm=12, md=4, lg=4, xl=2, 
+            xs=12, sm=12, md=3, lg=3, xl=2,  # Reduced width for controls
             style={"borderRight": "1px solid #ddd", "padding": "10px"}
         ),
 
@@ -473,14 +473,15 @@ def generate_scatter_layout(adata, prefix):
                                     style={
                                         "height": "100%",  # Fill container height
                                         "width": "100%",   # Full width of container
-                                    }
+                                    },
+                                    responsive=True  # Make plot responsive to container size
                                 ),
-                                style={"height": "100%"},
+                                style={"height": "100%", "width": "100%"},
                             ),
                         ], style={
                             "flex": "1",  # Grow to fill available space
-                            "minHeight": "450px",  # Increased minimum height for legend space
-                            "maxHeight": "650px",  # Increased maximum height to accommodate legend
+                            "minHeight": "500px",  # Minimum height
+                            "height": "calc(100vh - 350px)",  # Dynamic height based on viewport
                             "overflow": "hidden",  # Prevent overflow
                             "position": "relative"  # For proper positioning
                         }),
@@ -527,15 +528,14 @@ def generate_scatter_layout(adata, prefix):
                     ], style={
                         "display": "flex",
                         "flexDirection": "column",
-                        "height": "70vh",  # Increased container height to accommodate legend
-                        "minHeight": "550px",  # Increased minimum height for legend space
-                        "maxHeight": "750px"   # Increased maximum height
+                        "height": "auto",  # Let content determine height
+                        "width": "100%",  # Use full width available
                     }),
                 ],
                 className="dbc",
                 style={'marginBottom': '20px'}
             ),
-            xs=12, sm=12, md=8, lg=8, xl=10
+            xs=12, sm=12, md=9, lg=9, xl=10  # Increased width for scatter plot
         ),
     ])
     ])

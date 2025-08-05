@@ -563,7 +563,7 @@ def plot_combined_scatter_subplots(
     else:
         legend_config = None
     
-    # Update layout
+    # Update layout - responsive sizing
     if single_plot_mode:
         fig.update_layout(
             plot_bgcolor='white',
@@ -572,7 +572,7 @@ def plot_combined_scatter_subplots(
             autosize=True,
             showlegend=(legend_show == 'right' and annotation_type == 'categorical'),
             legend=legend_config,
-            margin=dict(t=20, b=120),  # Increased bottom margin for legend spacing
+            margin=dict(t=30, b=120, l=60, r=60),  # Balanced margins
             uirevision='constant',
             dragmode='zoom'  # Enable zoom mode to match scatter_config
         )
@@ -586,7 +586,7 @@ def plot_combined_scatter_subplots(
             showlegend=(legend_show == 'right' and annotation_type == 'categorical'),
             legend=legend_config,
             uirevision='constant',
-            margin=dict(t=50, b=100, l=50, r=50),
+            margin=dict(t=50, b=100, l=60, r=60),
             dragmode='zoom'
         )
     
@@ -692,10 +692,10 @@ def plot_combined_scatter_subplots(
             row=1, col=2
         )
         
-        # Override domain for precise spacing with more gap to prevent overlap
+        # Override domain for better use of space
         fig.update_layout(
-            xaxis=dict(domain=[0, 0.4]),       # Left plot: 0% to 40% (wider gap)
-            xaxis2=dict(domain=[0.6, 1.0]),    # Right plot: 60% to 100% (20% gap)
+            xaxis=dict(domain=[0, 0.45]),      # Left plot: 0% to 45%
+            xaxis2=dict(domain=[0.55, 1.0]),   # Right plot: 55% to 100% (10% gap)
         )
     
     # Axis synchronization is handled by scaleanchor properties in the layout

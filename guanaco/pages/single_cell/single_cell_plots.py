@@ -921,16 +921,19 @@ def single_cell_callbacks(app, adata, prefix):
         else:
             plot_adata = adata
         
-        # If no selection made, return None (no cells selected)
+        # If no selection made, use all cells
         if not selected_data or not selected_data.get('points'):
+            # Return all cell indices from the current (possibly filtered) dataset
+            all_cell_indices = plot_adata.obs.index.tolist()
+            n_cells = len(all_cell_indices)
             status_msg = dbc.Alert(
-                "⚠️ No cells selected. Please use lasso or box select tool to select cells.",
-                color="warning",
+                f"✓ Using all {n_cells:,} cells. Other plots updated.",
+                color="info",
                 dismissable=True,
                 duration=4000
             )
-            print("DEBUG: No points selected, returning None")
-            return None, status_msg
+            print(f"DEBUG: No selection made, using all {n_cells} cells")
+            return all_cell_indices, status_msg
         
         # Extract cell indices from selected points
         selected_points = selected_data['points']
