@@ -8,7 +8,7 @@ import dash_bootstrap_components as dbc
 import plotly.express as px
 
 # Import configs
-from guanaco.config import scatter_config, gene_scatter_config
+from guanaco.config import scatter_config
 
 # Load color palettes
 cvd_color_path = Path(__file__).parent / "cvd_color.json"
@@ -68,8 +68,20 @@ def generate_annotation_dropdown(anno_list, prefix):
 
 def generate_scatter_gene_selection(init_gene_list, prefix):
     """Generate gene selection dropdown for scatter plot"""
+    # Find the first gene in the list (skipping annotations which come first)
+    default_value = None
+    for item in init_gene_list:
+        # Assuming genes start after the first 20 or so items (which are annotations)
+        # We can check if item looks like a gene name (often uppercase or mixed case)
+        # For safety, just use item at index 20 if list is long enough
+        if len(init_gene_list) > 20:
+            default_value = init_gene_list[20]  # First gene after annotations
+            break
+    if default_value is None:
+        default_value = init_gene_list[0] if init_gene_list else None
+    
     return dcc.Dropdown(id=f'{prefix}-scatter-gene-selection', options=[{'label': label, 'value': label} for label in init_gene_list], 
-    value = init_gene_list[0], placeholder="Search and select a gene...", style={'marginBottom': '15px'})
+    value = default_value, placeholder="Search and select a gene...", style={'marginBottom': '15px'})
 
 
 def create_global_metadata_filter(adata, prefix):
@@ -183,7 +195,7 @@ def generate_scatter_layout(adata, prefix):
                 {'label': 'None', 'value':None},
                 {'label': 'Log', 'value': 'log'}
             ],
-            value='log',
+            value=None,
             inline=True,
             style={'fontSize': '14px'} 
         )
@@ -389,7 +401,7 @@ def generate_scatter_layout(adata, prefix):
                         ], width=6),
                         dbc.Col([
                             html.Label("Search Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-                            generate_scatter_gene_selection(init_gene_list=adata.var_names.to_list()[:10], prefix=prefix),
+                            generate_scatter_gene_selection(init_gene_list=anno_list, prefix=prefix),
                         ], width=6),
                     ], style={'marginBottom': '10px'}),
                     
@@ -416,8 +428,8 @@ def generate_scatter_layout(adata, prefix):
                                     html.Label("Second Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
                                     dcc.Dropdown(
                                         id=f'{prefix}-scatter-gene2-selection',
-                                        options=[{'label': label, 'value': label} for label in adata.var_names.to_list()[:10]],
-                                        value=adata.var_names.to_list()[1],
+                                        options=[{'label': label, 'value': label} for label in anno_list],
+                                        value=anno_list[21] if len(anno_list) > 21 else (anno_list[1] if len(anno_list) > 1 else None),
                                         placeholder="Search and select second gene...",
                                         style={'marginBottom': '10px'}
                                     ),

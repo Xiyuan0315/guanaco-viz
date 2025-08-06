@@ -23,7 +23,7 @@ scatter_config = {
     'doubleClick': 'reset',  # Double click to reset zoom
     'showTips': False,  # Reduce hover updates
     'frameMargins': 0,  # Reduce margin calculations
-    'modeBarButtonsToRemove': ['select', 'zoom2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'zoom', 'resetScale2d'],
+    'modeBarButtonsToRemove': ['select', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'zoom', 'resetScale2d'],
     'modeBarButtonsToAdd': ['select2d', 'lasso2d', 'pan2d']  # Selection tools for cell selection
 }
 
@@ -41,8 +41,7 @@ gene_scatter_config = {
     'doubleClick': 'reset',  # Double click to reset zoom
     'showTips': False,  # Reduce hover updates
     'frameMargins': 0,  # Reduce margin calculations
-    'modeBarButtonsToRemove': ['lasso2d','select', 'select2d', 'zoom2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'zoom', 'resetScale2d'],
-    'modeBarButtonsToAdd': []  # No selection tools, just pan and download
+    'modeBarButtonsToRemove': ['lasso2d','select', 'select2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'zoom', 'resetScale2d'],
 }
 
 # Debounced scatter config - use this for callbacks that need debouncing

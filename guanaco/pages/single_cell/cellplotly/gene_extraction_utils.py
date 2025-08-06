@@ -1,8 +1,6 @@
 import numpy as np
 import pandas as pd
 from scipy.sparse import issparse
-from functools import lru_cache
-import hashlib
 import time
 import gc
 
@@ -194,50 +192,28 @@ def extract_multiple_genes(adata, genes, layer=None, use_raw=False):
     
     return df
 
-
-def apply_transformation(expr, method='log1p', copy=True):
-    """
-    Apply transformation to expression data efficiently.
-    
-    Parameters:
-    -----------
-    expr : np.ndarray or pd.DataFrame
-        Expression data
-    method : str
-        Transformation method: 'log1p', 'log', 'sqrt', 'zscore', 'z_score', 'scale'
-    copy : bool
-        Whether to copy data before transformation
-    
-    Returns:
-    --------
-    Transformed expression data
-    """
+def apply_transformation(expr, method='log1p', copy=True, clip_percentile=99):
     if copy:
         expr = expr.copy()
     
-    # Handle both 'zscore' and 'z_score'
     if method in ['zscore', 'z_score']:
         # Z-score normalization
         if isinstance(expr, pd.DataFrame):
-            return expr.apply(lambda x: (x - x.mean()) / x.std(), axis=0)
+            expr = expr.apply(lambda x: (x - x.mean()) / x.std(), axis=0)
         else:
             mean = np.mean(expr)
             std = np.std(expr)
-            return (expr - mean) / std if std > 0 else expr - mean
-    elif method == 'log1p' or method == 'log':
-        return np.log1p(expr)
-    elif method == 'sqrt':
-        return np.sqrt(expr)
-    elif method == 'scale':
-        # Min-max scaling to [0, 1]
-        if isinstance(expr, pd.DataFrame):
-            return expr.apply(lambda x: (x - x.min()) / (x.max() - x.min()), axis=0)
-        else:
-            min_val = np.min(expr)
-            max_val = np.max(expr)
-            return (expr - min_val) / (max_val - min_val) if max_val > min_val else expr - min_val
-    else:
-        return expr
+            expr = (expr - mean) / std if std > 0 else expr - mean
+        
+        # Clip to ±99% percentile
+        upper = np.percentile(expr, clip_percentile)
+        lower = np.percentile(expr, 100 - clip_percentile)
+        expr = np.clip(expr, lower, upper)
+
+    elif method in ['log1p', 'log']:
+        expr = np.log1p(expr)
+
+    return expr
 
 
 def get_expression_percentiles(expr, percentiles=[0, 25, 50, 75, 95, 99, 100]):

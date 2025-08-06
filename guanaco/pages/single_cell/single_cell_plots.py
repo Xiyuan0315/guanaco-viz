@@ -1,17 +1,13 @@
 import json
 from pathlib import Path
 import warnings
-import numpy as np
 import pandas as pd
 import dash
 from dash import dcc, html, Input, Output, exceptions, State, callback_context, ALL, no_update
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
-import plotly.express as px
 import plotly.graph_objects as go
-from guanaco.pages.single_cell.cellplotly.embedding import (
-    plot_combined_scatter_subplots
-)
+from guanaco.pages.single_cell.cellplotly.embedding import plot_combined_scatter_subplots
 from guanaco.pages.single_cell.cellplotly.heatmap1 import plot_heatmap1
 from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_heatmap2
 from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
@@ -20,17 +16,13 @@ from guanaco.pages.single_cell.cellplotly.stacked_bar import plot_stacked_bar
 from guanaco.pages.single_cell.cellplotly.dotmatrix_optimized import plot_dot_matrix
 from guanaco.pages.single_cell.cellplotly.pseudotime import plot_genes_in_pseudotime
 
-from guanaco.pages.single_cell.mod020_scatter import (
-    generate_scatter_layout, initialize_scatter_components
-)
+from guanaco.pages.single_cell.mod020_scatter import initialize_scatter_components
 from guanaco.pages.single_cell.mod021_heatmap import generate_heatmap_layout
 from guanaco.pages.single_cell.mod022_violin import generate_violin_layout
 from guanaco.pages.single_cell.mod023_dotplot import generate_dotplot_layout
 from guanaco.pages.single_cell.mod024_stacked_bar import generate_stacked_bar_layout
 from guanaco.pages.single_cell.mod025_pseudotime import generate_pseudotime_layout
 
-# Import configs
-from guanaco.config import scatter_config, gene_scatter_config
 from guanaco.data_loader import color_config
 warnings.filterwarnings('ignore', message='.*observed=False.*')
 
@@ -42,23 +34,19 @@ palette_names = list(palette_json["color_palettes"].keys())
 
 
 # ============= Scatter Plot Helper Functions =============
-# Note: The main scatter layout is now in mod020_scatter.py
 
-def initialize_scatter_components(adata):
-    embedding_prefixes = {
-        "X_umap": "UMAP", "X_pca": "PCA", "X_tsne": "t-SNE", "X_diffmap": "DiffMap",
-        "X_phate": "PHATE", "X_draw_graph_fa": "FA"
-    }
+def is_continuous_annotation(adata, annotation, threshold=50):
+    """Check if an annotation is continuous based on unique value count and data type."""
+    if annotation not in adata.obs.columns:
+        return False
     
-    obsm_list = list(adata.obsm.keys())
-    embedding_columns = {
-        key: [f'{embedding_prefixes.get(key, key.upper())}{i+1}' for i in range(adata.obsm[key].shape[1])]
-        for key in obsm_list
-    }
-    default_embedding = obsm_list[-1]
-    default_columns = embedding_columns[default_embedding]
-    
-    return obsm_list, embedding_columns, default_embedding, default_columns
+    # Check data type
+    dtype = adata.obs[annotation].dtype
+    if dtype in ['float32', 'float64', 'int32', 'int64']:
+        # Numeric type - check unique values
+        n_unique = adata.obs[annotation].nunique()
+        return n_unique >= threshold
+    return False
 
 
 def create_control_components(adata, prefix):
@@ -312,21 +300,6 @@ def generate_single_cell_tabs(adata, default_gene_markers, discrete_label_list, 
         ),
         dbc.Col(tabs, xs=12, sm=12, md=8, lg=8, xl=10)
     ], style={'marginBottom': '50px'})
-
-# ============= Helper Functions =============
-
-def is_continuous_annotation(adata, annotation, threshold=50):
-    """Check if an annotation is continuous based on unique value count and data type."""
-    if annotation not in adata.obs.columns:
-        return False
-    
-    # Check data type
-    dtype = adata.obs[annotation].dtype
-    if dtype in ['float32', 'float64', 'int32', 'int64']:
-        # Numeric type - check unique values
-        n_unique = adata.obs[annotation].nunique()
-        return n_unique >= threshold
-    return False
 
 
 
@@ -595,9 +568,18 @@ def single_cell_callbacks(app, adata, prefix):
     def update_scatter_gene_selection(search_value):
         if not search_value:
             raise exceptions.PreventUpdate
+        
+        # Include both metadata and genes (same as annotation dropdown)
+        label_list = adata.obs.keys().to_list()
         gene_list = adata.var_names.to_list()
+        
+        # Search in metadata first, then genes
+        matching_labels = [label for label in label_list if search_value.lower() in label.lower()]
         matching_genes = [gene for gene in gene_list if search_value.lower() in gene.lower()]
-        return [{'label': gene, 'value': gene} for gene in matching_genes[:20]]
+        
+        # Combine results with metadata first, then genes (limited to 20 total)
+        all_matches = matching_labels + matching_genes
+        return [{'label': item, 'value': item} for item in all_matches[:20]]
     
     @app.callback(
         Output(f'{prefix}-scatter-gene2-selection', 'options'),
@@ -606,9 +588,18 @@ def single_cell_callbacks(app, adata, prefix):
     def update_scatter_gene2_selection(search_value):
         if not search_value:
             raise exceptions.PreventUpdate
+        
+        # Include both metadata and genes (same as other dropdowns)
+        label_list = adata.obs.keys().to_list()
         gene_list = adata.var_names.to_list()
+        
+        # Search in metadata first, then genes
+        matching_labels = [label for label in label_list if search_value.lower() in label.lower()]
         matching_genes = [gene for gene in gene_list if search_value.lower() in gene.lower()]
-        return [{'label': gene, 'value': gene} for gene in matching_genes[:20]]
+        
+        # Combine results with metadata first, then genes (limited to 20 total)
+        all_matches = matching_labels + matching_genes
+        return [{'label': item, 'value': item} for item in all_matches[:20]]
     
     @app.callback(
         [Output(f'{prefix}-gene2-container', 'style'),
@@ -683,15 +674,16 @@ def single_cell_callbacks(app, adata, prefix):
             adata=plot_adata,
             adata_full=adata,  # Pass full dataset for consistent color mapping
             embedding_key=clustering,
-            annotation=annotation,
-            gene=effective_gene,
+            left_feature=annotation,
+            right_feature=effective_gene,
             x_axis=x_axis,
             y_axis=y_axis,
             transformation=transformation,
             order=order,
-            annotation_type='auto',  # Let the function auto-detect
-            gene_plot_type='coexpression' if coexpression_mode == 'coexpression' and plot_mode == 'dual' else 'single',
-            gene2=gene2_name if coexpression_mode == 'coexpression' and plot_mode == 'dual' else None,
+            left_type='auto',  # Let the function auto-detect
+            right_type='auto',  # Let the function auto-detect
+            right_plot_mode='coexpression' if coexpression_mode == 'coexpression' and plot_mode == 'dual' else 'single',
+            second_gene=gene2_name if coexpression_mode == 'coexpression' and plot_mode == 'dual' else None,
             threshold1=threshold1,
             threshold2=threshold2,
             color_map=continuous_color_map or 'Viridis',
@@ -740,14 +732,15 @@ def single_cell_callbacks(app, adata, prefix):
             adata=plot_adata,
             adata_full=adata,
             embedding_key=clustering_method,
-            annotation=annotation,
-            gene=annotation,  # Use same annotation for both sides to create single plot effect
+            left_feature=annotation,
+            right_feature=annotation,  # Use same annotation for both sides to create single plot effect
             x_axis=x_axis,
             y_axis=y_axis,
             transformation=transformation if annotation in adata.var_names else None,
             order=order,
-            annotation_type='auto',  # Let function auto-detect
-            gene_plot_type='single',
+            left_type='auto',  # Let function auto-detect
+            right_type='auto',  # Let function auto-detect
+            right_plot_mode='single',
             color_map=continuous_color_map or 'Viridis',
             color_map_discrete=discrete_color_map,
             marker_size=marker_size,
@@ -799,15 +792,16 @@ def single_cell_callbacks(app, adata, prefix):
             adata=plot_adata,
             adata_full=adata,
             embedding_key=clustering,
-            annotation=gene_name,  # Use same gene for both sides to create single plot effect
-            gene=gene_name,
+            left_feature=gene_name,  # Use same gene for both sides to create single plot effect
+            right_feature=gene_name,
             x_axis=x_axis,
             y_axis=y_axis,
             transformation=transformation,
             order=order,
-            annotation_type='gene',  # Specify this is a gene
-            gene_plot_type='coexpression' if coexpression_mode == 'coexpression' and gene2_name else 'single',
-            gene2=gene2_name if coexpression_mode == 'coexpression' else None,
+            left_type='auto',  # Auto-detect whether it's annotation or gene
+            right_type='auto',  # Auto-detect whether it's annotation or gene
+            right_plot_mode='coexpression' if coexpression_mode == 'coexpression' and gene2_name else 'single',
+            second_gene=gene2_name if coexpression_mode == 'coexpression' else None,
             threshold1=threshold1,
             threshold2=threshold2,
             color_map=color_map or 'Viridis',
@@ -1503,80 +1497,6 @@ def single_cell_callbacks(app, adata, prefix):
                 color_map=color_map,
                 plot_type=plot_type
             )
-    
-    # Callback to populate x-axis groups draggable grid based on x-axis metadata selection
-    @app.callback(
-        [Output(f'{prefix}-x-axis-draggable-grid', 'children'),
-         Output(f'{prefix}-x-axis-groups-state', 'data')],
-        [Input(f'{prefix}-x-meta-dropdown', 'value'),
-         Input(f'{prefix}-single-cell-label-selection', 'value'),
-         Input(f'{prefix}-single-cell-tabs', 'value')],
-        [State(f'{prefix}-single-cell-annotation-dropdown', 'value'),
-         State(f'{prefix}-x-axis-groups-state', 'data')]
-    )
-    def update_x_axis_groups_grid(x_meta, selected_labels, active_tab, y_meta, current_state):
-        if active_tab != 'stacked-bar-tab' or not x_meta:
-            return [], {}
-        
-        # Get unique values from the selected x-axis metadata column
-        x_values = sorted(adata.obs[x_meta].unique())
-        
-        # If selected_labels are provided and we want to filter by them
-        # Only filter when x_meta matches the left control annotation
-        if selected_labels and len(selected_labels) < len(x_values):
-            # Check if selected labels are a subset of x_values
-            if set(selected_labels).issubset(set(x_values)):
-                x_values = selected_labels
-        
-        # Convert to strings for consistency
-        x_values = [str(val) for val in x_values]
-        
-        # Initialize state for new values
-        if not current_state:
-            current_state = {}
-        
-        # Update state to include all values (default to enabled)
-        new_state = {}
-        for val in x_values:
-            new_state[val] = current_state.get(val, True)
-        
-        # Create draggable items
-        items = []
-        for i, value in enumerate(x_values):
-            is_enabled = new_state.get(value, True)
-            # Create the item content
-            items.append(
-                html.Div([
-                    html.Div(value, 
-                            style={
-                                'fontWeight': 'bold',
-                                'marginBottom': '5px',
-                                'color': '#000' if is_enabled else '#999'
-                            }),
-                    dbc.Switch(
-                        id={'type': f'{prefix}-x-group-switch', 'index': value},
-                        value=is_enabled,
-                        style={'marginTop': '5px'}
-                    )
-                ], 
-                key=f'x-group-{value}',
-                style={
-                    'padding': '10px',
-                    'backgroundColor': '#fff' if is_enabled else '#f5f5f5',
-                    'border': '2px solid #007bff' if is_enabled else '1px solid #ddd',
-                    'borderRadius': '5px',
-                    'textAlign': 'center',
-                    'cursor': 'move',
-                    'height': '100%'
-                })
-            )
-        
-        if not items:
-            items = [html.Div("No groups available", 
-                            key='empty-msg',
-                            style={'color': '#6c757d', 'fontStyle': 'italic', 'padding': '20px'})]
-        
-        return items, new_state
     
     # Callback to handle toggle switches
     @app.callback(
