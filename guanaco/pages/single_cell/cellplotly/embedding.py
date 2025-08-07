@@ -15,7 +15,7 @@ def plot_combined_scatter_subplots(
     second_gene=None, threshold1=0.5, threshold2=0.5,
     color_map='Viridis', color_map_discrete=None,
     marker_size=5, opacity=1,
-    legend_show='right', axis_show=True
+    legend_show='hide', axis_show=True
 ):
 
     # Helper function to determine feature type
@@ -95,7 +95,7 @@ def plot_combined_scatter_subplots(
     def add_plot(feature, feature_type, row, col):
         if feature_type == 'categorical':
             # Categorical plot
-            on_data = legend_show == 'on data'
+            on_data = legend_show == 'show'  # Show legend on data when 'show'
             embedding_df[feature] = adata.obs[feature].values
             
             # Get all unique labels from FULL dataset for consistent color mapping
@@ -146,14 +146,15 @@ def plot_combined_scatter_subplots(
                 mask = embedding_df[feature] == label
                 masked_indices = np.arange(len(adata))[mask]
                 
-                # Show legend for each plot when both are categorical and different
-                # For left plot (col==1), always show legend if not on_data
-                # For right plot (col==2), show legend only if it's a different categorical feature
+                # Legend logic:
+                # - Always show the right-side legend (regardless of on_data setting)
+                # - For left plot (col==1), always show legend in the right side
+                # - For right plot (col==2), show legend only if it's a different categorical feature
                 if col == 1:
-                    show_in_legend = not on_data
+                    show_in_legend = True  # Always show legend for left plot
                 else:
                     # Show legend for right plot if it's categorical and different from left
-                    show_in_legend = not on_data and (feature != left_feature)
+                    show_in_legend = (feature != left_feature)
                 
                 # Use flat array for customdata (Plotly may not serialize 2D arrays properly)
                 customdata_array = masked_indices.tolist()
@@ -332,7 +333,8 @@ def plot_combined_scatter_subplots(
     # We always have 2 columns in the subplot layout
     has_categorical = left_type_actual == 'categorical' or right_type_actual == 'categorical'
     
-    if legend_show == 'right' and has_categorical:
+    # Always show the right-side legend when there are categorical features
+    if has_categorical:
         # If both are categorical and different, we need to handle dual legends
         if (left_type_actual == 'categorical' and 
             right_type_actual == 'categorical' and left_feature != right_feature):
@@ -384,7 +386,7 @@ def plot_combined_scatter_subplots(
         paper_bgcolor='white',
         height=None,  # Let container control height
         autosize=True,
-        showlegend=(legend_show == 'right' and has_categorical),
+        showlegend=has_categorical,  # Always show legend when categorical features present
         legend=legend_config,
         uirevision='constant',
         margin=dict(t=50, b=50, l=60, r=60),  # Reduced bottom margin

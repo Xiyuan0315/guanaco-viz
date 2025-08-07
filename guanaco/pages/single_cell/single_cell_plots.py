@@ -13,9 +13,8 @@ from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_heatmap2
 from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
 from guanaco.pages.single_cell.cellplotly.violin2_new import plot_violin2_new
 from guanaco.pages.single_cell.cellplotly.stacked_bar import plot_stacked_bar
-from guanaco.pages.single_cell.cellplotly.dotmatrix_optimized import plot_dot_matrix
+from guanaco.pages.single_cell.cellplotly.dotmatrix import plot_dot_matrix
 from guanaco.pages.single_cell.cellplotly.pseudotime import plot_genes_in_pseudotime
-
 from guanaco.pages.single_cell.mod020_scatter import initialize_scatter_components
 from guanaco.pages.single_cell.mod021_heatmap import generate_heatmap_layout
 from guanaco.pages.single_cell.mod022_violin import generate_violin_layout
@@ -71,8 +70,6 @@ def create_control_components(adata, prefix):
 
 
 def generate_annotation_dropdown(anno_list, prefix):
-    # Need access to adata to determine which items are genes
-    # For now, create options without gene labels - will be handled by search callback
     return dcc.Dropdown(id=f'{prefix}-annotation-dropdown', 
     options=[{'label': label, 'value': label} for label in anno_list],
     placeholder="Search annotations or genes...", 
@@ -264,7 +261,7 @@ def generate_left_control(default_gene_markers, label_list, prefix):
 
     
     return html.Div([
-        html.Label('Select Variables:', style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+        html.Label('Select Genes:', style={'fontWeight': 'bold', 'marginBottom': '5px'}),
         genes_selection,
         html.Label('Select Annotation:', style={'fontWeight': 'bold', 'marginBottom': '5px'}),
         annotation_filter,
@@ -438,8 +435,7 @@ def single_cell_callbacks(app, adata, prefix):
         if input_mode != 'text' or not textarea_value:
             return no_update, ''
         
-        # Parse the textarea input - handle various formats
-        # First, check if it looks like a Python list (has brackets)
+
         text = textarea_value.strip()
         if text.startswith('[') and text.endswith(']'):
             text = text[1:-1]  # Remove brackets
@@ -763,7 +759,6 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-scatter-color-map-dropdown', 'value'),
          Input(f'{prefix}-marker-size-slider', 'value'),
          Input(f'{prefix}-opacity-slider', 'value'),
-         Input(f'{prefix}-annotation-scatter', 'relayoutData'),
          Input(f'{prefix}-axis-toggle', 'value'),
          Input(f'{prefix}-coexpression-toggle', 'value'),
          Input(f'{prefix}-scatter-gene2-selection', 'value'),
@@ -774,7 +769,7 @@ def single_cell_callbacks(app, adata, prefix):
          ]
     )
     def update_gene_scatter(gene_name, clustering, x_axis, y_axis, transformation, order, 
-                           color_map, marker_size, opacity, annotation_relayout, axis_show,
+                           color_map, marker_size, opacity, axis_show,
                            coexpression_mode, gene2_name, threshold1, threshold2, legend_show, filtered_data):
         if not gene_name:
             raise exceptions.PreventUpdate
@@ -897,16 +892,6 @@ def single_cell_callbacks(app, adata, prefix):
         if n_clicks == 0:
             return None, ""
         
-        # Debug: Print what we received
-        print(f"DEBUG store_selected_cells: n_clicks={n_clicks}")
-        print(f"DEBUG: selected_data type={type(selected_data)}")
-        if selected_data:
-            print(f"DEBUG: selected_data keys={selected_data.keys() if hasattr(selected_data, 'keys') else 'N/A'}")
-            if 'points' in selected_data:
-                print(f"DEBUG: Number of selected points={len(selected_data['points'])}")
-                if selected_data['points']:
-                    print(f"DEBUG: First point data={selected_data['points'][0]}")
-        
         # Get the same filtered data that the scatter plot is using
         if (filtered_data and 
             filtered_data.get('cell_indices') is not None and 
@@ -926,7 +911,7 @@ def single_cell_callbacks(app, adata, prefix):
                 dismissable=True,
                 duration=4000
             )
-            print(f"DEBUG: No selection made, using all {n_cells} cells")
+
             return all_cell_indices, status_msg
         
         # Extract cell indices from selected points
@@ -941,7 +926,6 @@ def single_cell_callbacks(app, adata, prefix):
             for point in selected_points:
                 if 'customdata' in point:
                     customdata = point['customdata']
-                    print(f"DEBUG: Found customdata: {customdata}")
                     # Handle both single values and arrays
                     if isinstance(customdata, (list, tuple)) and len(customdata) > 1:
                         # The second element in customdata is the cell index (for genes with annotation data)
@@ -952,25 +936,21 @@ def single_cell_callbacks(app, adata, prefix):
                     selected_indices.append(plot_adata.obs.index[cell_idx])
                 else:
                     # Fallback to point number if customdata is not available
-                    print(f"DEBUG: No customdata, using pointNumber as fallback")
                     point_number = point.get('pointNumber', 0)
                     selected_indices.append(plot_adata.obs.index[point_number])
         else:
             # For categorical data - customdata contains cell indices directly
-            print(f"DEBUG: Processing categorical data for {current_annotation}")
             for point in selected_points:
                 curve_number = point.get('curveNumber', 0)
                 point_number = point.get('pointNumber', 0)
                 
                 # Skip background trace (curve 0) - it's non-selectable
                 if curve_number == 0:
-                    print(f"DEBUG: Skipping background trace (curve {curve_number})")
                     continue
                     
                 if 'customdata' in point:
                     # Customdata contains the cell index directly
                     customdata = point['customdata']
-                    print(f"DEBUG: Found customdata for categorical: {customdata}")
                     
                     if customdata is not None:
                         # Handle both single values and arrays
@@ -982,11 +962,8 @@ def single_cell_callbacks(app, adata, prefix):
                         # Add the cell to selected indices
                         if cell_idx < len(plot_adata):
                             selected_indices.append(plot_adata.obs.index[cell_idx])
-                        else:
-                            print(f"DEBUG: Cell index {cell_idx} out of range")
+
                 else:
-                    # No customdata - try fallback for non-background traces
-                    print(f"DEBUG: No customdata for curve {curve_number}, trying fallback")
                     
                     if curve_number > 0:
                         # Try to infer from curve number and categories
@@ -1003,8 +980,6 @@ def single_cell_callbacks(app, adata, prefix):
         
         if selected_indices:
             n_selected = len(selected_indices)
-            print(f"DEBUG: Successfully selected {n_selected} cells")
-            print(f"DEBUG: First few cell indices: {selected_indices[:5]}")
             status_msg = dbc.Alert(
                 f"✓ {n_selected} cells selected from {current_annotation}. Other plots updated.",
                 color="success",
@@ -1014,7 +989,6 @@ def single_cell_callbacks(app, adata, prefix):
             
             return selected_indices, status_msg
         else:
-            print("DEBUG: No indices collected, returning None")
             return None, ""
     
     # Enable/disable download menu based on selected cells

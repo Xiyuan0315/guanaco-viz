@@ -3,10 +3,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from scipy.stats import ttest_ind, mannwhitneyu, f_oneway, kruskal
-import statsmodels.api as sm
 from statsmodels.formula.api import ols, mixedlm
 from guanaco.data_loader import color_config
-from itertools import combinations
 import warnings
 
 def determine_test_method(meta1_levels, meta2_levels, mode, test_override=None):

@@ -2,7 +2,7 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import dash_draggable
-from guanaco.config import common_config
+from guanaco.pages.single_cell.config import common_config
 
 
 # Get the available color scales

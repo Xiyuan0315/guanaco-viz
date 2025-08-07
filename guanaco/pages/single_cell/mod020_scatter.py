@@ -8,7 +8,7 @@ import dash_bootstrap_components as dbc
 import plotly.express as px
 
 # Import configs
-from guanaco.config import scatter_config
+from guanaco.pages.single_cell.config import scatter_config
 
 # Load color palettes
 cvd_color_path = Path(__file__).parent / "cvd_color.json"
@@ -262,10 +262,10 @@ def generate_scatter_layout(adata, prefix):
     scatter_legend_toggle = dbc.RadioItems(
         id=f'{prefix}-scatter-legend-toggle',
         options=[
-            {'label': 'on data', 'value': 'on data'},
-            {'label': 'right', 'value': 'right'}
+            {'label': 'Show', 'value': 'show'},
+            {'label': 'Hide', 'value': 'hide'}
         ],
-        value='right',
+        value='hide',
         inline=True,
         style={'fontSize': '14px'} 
     )
@@ -324,7 +324,7 @@ def generate_scatter_layout(adata, prefix):
             ),
             html.Div(
                 [
-                    html.Label("Legend Location:",  className="control-label"),
+                    html.Label("Legend on data:",  className="control-label"),
                     scatter_legend_toggle,
                 ],
                 style={'marginBottom': '15px'}
@@ -396,11 +396,11 @@ def generate_scatter_layout(adata, prefix):
                     # Controls row for both plots
                     dbc.Row([
                         dbc.Col([
-                            html.Label("Select Annotation/Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                            html.Label("Search Annotation/Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
                             generate_annotation_dropdown(anno_list=anno_list, prefix=prefix),
                         ], width=6),
                         dbc.Col([
-                            html.Label("Search Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                            html.Label("Search Annotation/Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
                             generate_scatter_gene_selection(init_gene_list=anno_list, prefix=prefix),
                         ], width=6),
                     ], style={'marginBottom': '10px'}),

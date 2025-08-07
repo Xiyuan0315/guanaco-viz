@@ -2,7 +2,7 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 import dash_draggable
 import dash_ag_grid as dag
-from guanaco.config import common_config
+from guanaco.pages.single_cell.config import common_config
 
 def generate_stacked_bar_layout(discrete_label_list, prefix):
     """

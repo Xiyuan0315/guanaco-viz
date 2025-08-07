@@ -1,7 +1,7 @@
 from dash import dcc, html
 import dash_bootstrap_components as dbc
 import dash_draggable
-from guanaco.config import common_config
+from guanaco.pages.single_cell.config import common_config
 ## Tab2: Violin2
 def generate_violin_layout(adata, default_gene_markers,discrete_label_list,prefix):
     # Pre-create some common dropdowns and toggles
