@@ -45,7 +45,7 @@ def generate_dotplot_layout(prefix):
                 {'label': 'None', 'value': 'None'},
                 {'label': 'Log', 'value': 'log'}
             ],
-            value='log',
+            value='None',
             inline=True,
             style={'marginBottom': '10px'}
         )

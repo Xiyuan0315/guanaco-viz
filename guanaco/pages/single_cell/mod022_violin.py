@@ -11,7 +11,7 @@ def generate_violin_layout(adata, default_gene_markers,discrete_label_list,prefi
             {'label': 'None', 'value': 'False'},
             {'label': 'Log', 'value': 'log'}
         ],
-        value='log',
+        value='False',
         inline=True,
         style={'marginLeft': '10px'}
     )
@@ -22,7 +22,7 @@ def generate_violin_layout(adata, default_gene_markers,discrete_label_list,prefi
             {'label': 'None', 'value': 'False'},
             {'label': 'Log', 'value': 'log'}
         ],
-        value='log',
+        value='False',
         inline=False
     )
 

@@ -11,7 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from guanaco.pages.single_cell.cellplotly.embedding import plot_continuous_embedding, plot_coexpression_embedding
 from guanaco.pages.single_cell.cellplotly.heatmap1 import plot_heatmap1
-from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_heatmap2
+from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_heatmap2, plot_unified_heatmap
 from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
 from guanaco.pages.single_cell.cellplotly.violin2_new import plot_violin2_new
 from guanaco.pages.single_cell.cellplotly.stacked_bar import plot_stacked_bar
@@ -77,19 +77,27 @@ def create_control_components(adata, prefix):
     return clustering_dropdown, coordinates_dropdowns
 
 
-def generate_annotation_dropdown(anno_list, prefix):
-    # Need access to adata to determine which items are genes
-    # For now, create options without gene labels - will be handled by search callback
-    return dcc.Dropdown(id=f'{prefix}-annotation-dropdown', 
-    options=[{'label': label, 'value': label} for label in anno_list],
-    placeholder="Search annotations or genes...", 
-    value = anno_list[0] if anno_list else None,
-    style={'marginBottom': '15px'})
+def generate_annotation_dropdown(anno_list, prefix, default_value=None):
+    # Generate dropdown with both annotations and genes
+    # Use the default_value if provided, otherwise use first item
+    return dcc.Dropdown(
+        id=f'{prefix}-annotation-dropdown', 
+        options=[{'label': label, 'value': label} for label in anno_list],
+        placeholder="Search annotations or genes...", 
+        value=default_value if default_value else (anno_list[0] if anno_list else None),
+        style={'marginBottom': '15px'}
+    )
 
 
-def generate_scatter_gene_selection(init_gene_list, prefix):
-    return dcc.Dropdown(id=f'{prefix}-scatter-gene-selection', options=[{'label': label, 'value': label} for label in init_gene_list], 
-    value = init_gene_list[0], placeholder="Search and select a gene...", style={'marginBottom': '15px'})
+def generate_scatter_gene_selection(combined_list, prefix, default_value=None):
+    # Now accepts combined list of annotations and genes, with optional default value
+    return dcc.Dropdown(
+        id=f'{prefix}-scatter-gene-selection', 
+        options=[{'label': label, 'value': label} for label in combined_list], 
+        value=default_value if default_value else (combined_list[0] if combined_list else None), 
+        placeholder="Search annotations or genes...", 
+        style={'marginBottom': '15px'}
+    )
 
 
 def create_global_metadata_filter(adata, prefix):
@@ -205,7 +213,7 @@ def scatter_layout(adata,prefix):
                 {'label': 'None', 'value':None},
                 {'label': 'Log', 'value': 'log'}
             ],
-            value='log',
+            value=None,
             inline=True,
             style={'fontSize': '14px'} 
         )
@@ -351,9 +359,16 @@ def scatter_layout(adata,prefix):
         ],
         style={'display': 'none'}  # hidden by default
     )
-    anno_list = adata.obs.columns.tolist()
+    # Get annotations and genes
+    annotations = adata.obs.columns.tolist()
     sample_genes = adata.var_names[:20].tolist()
-    anno_list.extend(sample_genes)
+    
+    # Create combined list for both dropdowns
+    combined_list = annotations + sample_genes
+    
+    # Set default values: first annotation for left, first gene for right
+    default_annotation = annotations[0] if annotations else None
+    default_gene = sample_genes[0] if sample_genes else None
 
     clustering_dropdown, coordinates_dropdowns = create_control_components(adata, prefix)
     layout = html.Div([
@@ -403,7 +418,7 @@ def scatter_layout(adata,prefix):
         html.Div(
             [
                 html.Label("Select Annotation/Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-                generate_annotation_dropdown(anno_list=anno_list, prefix=prefix),
+                generate_annotation_dropdown(anno_list=combined_list, prefix=prefix, default_value=default_annotation),
                 dcc.Loading(
                     id=f"{prefix}-loading-annotaion-scatter",
                     type="circle",
@@ -449,8 +464,8 @@ def scatter_layout(adata,prefix):
     dbc.Col(
         html.Div(
             [
-                html.Label("Search Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
-                generate_scatter_gene_selection(init_gene_list=adata.var_names.to_list()[:10], prefix=prefix),
+                html.Label("Select Annotation/Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                generate_scatter_gene_selection(combined_list=combined_list, prefix=prefix, default_value=default_gene),
                 # Add toggle for co-expression mode
                 dbc.RadioItems(
                     id=f'{prefix}-coexpression-toggle',
@@ -1212,11 +1227,13 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-plot-order', 'value'),  # Add for continuous ordering
          Input(f'{prefix}-scatter-color-map-dropdown', 'value'),  # Add for continuous color maps
          Input(f'{prefix}-global-filtered-data', 'data'),  # Add global filtered data
+         Input(f'{prefix}-gene-scatter', 'relayoutData'),  # Add gene scatter relayout for bidirectional sync
          ]
     )
     def update_annotation_scatter(clustering_method, x_axis, y_axis, annotation, 
                                 marker_size, opacity, legend_show, axis_show, 
-                                discrete_color_map, transformation, order, continuous_color_map, filtered_data):
+                                discrete_color_map, transformation, order, continuous_color_map, 
+                                filtered_data, gene_relayout):
         if not annotation:
             raise exceptions.PreventUpdate
         
@@ -1301,6 +1318,39 @@ def single_cell_callbacks(app, adata, prefix):
             )
         )
         
+        # Apply zoom from gene scatter plot for bidirectional sync
+        if gene_relayout:
+            if 'xaxis.range[0]' in gene_relayout and 'yaxis.range[0]' in gene_relayout:
+                # User has zoomed/panned on gene scatter - apply those exact ranges
+                x_range = [gene_relayout['xaxis.range[0]'], gene_relayout['xaxis.range[1]']]
+                y_range = [gene_relayout['yaxis.range[0]'], gene_relayout['yaxis.range[1]']]
+                fig.update_layout(
+                    xaxis=dict(
+                        range=x_range,
+                        scaleanchor='y',
+                        scaleratio=1,
+                        constrain='domain'
+                    ), 
+                    yaxis=dict(
+                        range=y_range,
+                        constrain='domain'
+                    )
+                )
+            elif 'xaxis.autorange' in gene_relayout or 'autosize' in gene_relayout:
+                # Reset zoom was triggered on gene scatter - match the autorange behavior
+                fig.update_layout(
+                    xaxis=dict(
+                        autorange=True,
+                        scaleanchor='y',
+                        scaleratio=1,
+                        constrain='domain'
+                    ),
+                    yaxis=dict(
+                        autorange=True,
+                        constrain='domain'
+                    )
+                )
+        
         return fig
     
     @app.callback(
@@ -1321,12 +1371,14 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-gene1-threshold-slider', 'value'),
          Input(f'{prefix}-gene2-threshold-slider', 'value'),
          Input(f'{prefix}-scatter-legend-toggle', 'value'),
+         Input(f'{prefix}-discrete-color-map-dropdown', 'value'),  # Add discrete color map
          Input(f'{prefix}-global-filtered-data', 'data'),  # Add global filtered data
          ]
     )
     def update_gene_scatter(gene_name, clustering, x_axis, y_axis, transformation, order, 
                            color_map, marker_size, opacity, annotation_relayout, axis_show,
-                           coexpression_mode, gene2_name, threshold1, threshold2, legend_show, filtered_data):
+                           coexpression_mode, gene2_name, threshold1, threshold2, legend_show, 
+                           discrete_color_map, filtered_data):
         if not gene_name:
             raise exceptions.PreventUpdate
         
@@ -1338,38 +1390,77 @@ def single_cell_callbacks(app, adata, prefix):
         else:
             plot_adata = adata
         
-        if coexpression_mode == 'coexpression' and gene2_name:
-            # Use co-expression visualization
-            fig = plot_coexpression_embedding(
+        # Check if gene_name is actually a gene or an annotation
+        if gene_name in adata.var_names:
+            # This is a gene
+            if coexpression_mode == 'coexpression' and gene2_name:
+                # Use co-expression visualization
+                fig = plot_coexpression_embedding(
+                    adata=plot_adata,
+                    embedding_key=clustering,
+                    gene1=gene_name,
+                    gene2=gene2_name,
+                    x_axis=x_axis,
+                    y_axis=y_axis,
+                    threshold1=threshold1,
+                    threshold2=threshold2,
+                    transformation=transformation,
+                    color_map=None,  # Use default colors for co-expression
+                    marker_size=marker_size,
+                    opacity=opacity,
+                    legend_show=legend_show,
+                    axis_show=axis_show,
+                )
+            else:
+                # Use single gene visualization
+                fig = plot_continuous_embedding(
+                    adata=plot_adata,
+                    embedding_key=clustering,
+                    color=gene_name,
+                    x_axis=x_axis,
+                    y_axis=y_axis,
+                    transformation=transformation,
+                    order=order,
+                    color_map=color_map or 'Viridis',
+                    marker_size=marker_size,
+                    opacity=opacity,
+                    annotation=None,
+                    axis_show=axis_show,
+                )
+        elif is_continuous_annotation(adata, gene_name):
+            # This is a continuous annotation
+            fig = plot_continuous_annotation(
                 adata=plot_adata,
                 embedding_key=clustering,
-                gene1=gene_name,
-                gene2=gene2_name,
+                annotation=gene_name,
                 x_axis=x_axis,
                 y_axis=y_axis,
-                threshold1=threshold1,
-                threshold2=threshold2,
-                transformation=transformation,
-                color_map=None,  # Use default colors for co-expression
-                marker_size=marker_size,
-                opacity=opacity,
-                legend_show=legend_show,
-                axis_show=axis_show,
-            )
-        else:
-            # Use single gene visualization
-            fig = plot_continuous_embedding(
-                adata=plot_adata,
-                embedding_key=clustering,
-                color=gene_name,
-                x_axis=x_axis,
-                y_axis=y_axis,
-                transformation=transformation,
+                transformation=None,  # Disable transformation for annotation data
                 order=order,
                 color_map=color_map or 'Viridis',
                 marker_size=marker_size,
                 opacity=opacity,
-                annotation=None,
+                axis_show=axis_show,
+            )
+        else:
+            # This is a categorical annotation
+            if discrete_color_map is None:
+                discrete_color_map_value = color_config
+            else:
+                discrete_color_map_value = palette_json["color_palettes"][discrete_color_map]
+            
+            fig = plot_categorical_embedding_with_fixed_colors(
+                adata=plot_adata,
+                adata_full=adata,  # Pass full adata for color reference
+                gene=None,  # Don't pass gene to avoid unnecessary computation
+                embedding_key=clustering,
+                color=gene_name,
+                x_axis=x_axis,
+                y_axis=y_axis,
+                color_map=discrete_color_map_value,
+                marker_size=marker_size,
+                opacity=opacity,
+                legend_show=legend_show,
                 axis_show=axis_show,
             )
         
@@ -1388,21 +1479,37 @@ def single_cell_callbacks(app, adata, prefix):
         )
         
         # Apply zoom from annotation scatter plot
-        if annotation_relayout and ('xaxis.range[0]' in annotation_relayout and 'yaxis.range[0]' in annotation_relayout):
-            x_range = [annotation_relayout['xaxis.range[0]'], annotation_relayout['xaxis.range[1]']]
-            y_range = [annotation_relayout['yaxis.range[0]'], annotation_relayout['yaxis.range[1]']]
-            fig.update_layout(
-                xaxis=dict(
-                    range=x_range,
-                    scaleanchor='y',
-                    scaleratio=1,
-                    constrain='domain'
-                ), 
-                yaxis=dict(
-                    range=y_range,
-                    constrain='domain'
+        if annotation_relayout:
+            if 'xaxis.range[0]' in annotation_relayout and 'yaxis.range[0]' in annotation_relayout:
+                # User has zoomed/panned - apply those exact ranges
+                x_range = [annotation_relayout['xaxis.range[0]'], annotation_relayout['xaxis.range[1]']]
+                y_range = [annotation_relayout['yaxis.range[0]'], annotation_relayout['yaxis.range[1]']]
+                fig.update_layout(
+                    xaxis=dict(
+                        range=x_range,
+                        scaleanchor='y',
+                        scaleratio=1,
+                        constrain='domain'
+                    ), 
+                    yaxis=dict(
+                        range=y_range,
+                        constrain='domain'
+                    )
                 )
-            )
+            elif 'xaxis.autorange' in annotation_relayout or 'autosize' in annotation_relayout:
+                # Reset zoom was triggered - match the autorange behavior
+                fig.update_layout(
+                    xaxis=dict(
+                        autorange=True,
+                        scaleanchor='y',
+                        scaleratio=1,
+                        constrain='domain'
+                    ),
+                    yaxis=dict(
+                        autorange=True,
+                        constrain='domain'
+                    )
+                )
             
         return fig
     
@@ -1708,11 +1815,12 @@ def single_cell_callbacks(app, adata, prefix):
          Input(f'{prefix}-heatmap-colorscale-dropdown', 'value'),
          Input(f'{prefix}-heatmap-label-dropdown', 'value'),
          Input(f'{prefix}-discrete-color-map-dropdown', 'value'),
+         Input(f'{prefix}-heatmap-secondary-colormap-dropdown', 'value'),  # Add secondary colormap input
          Input(f'{prefix}-selected-cells-store', 'data'),
          Input(f'{prefix}-single-cell-tabs', 'value')],
         [State(f'{prefix}-heatmap', 'figure')]  # Keep current figure as state
     )
-    def update_heatmap(selected_genes, selected_annotation, selected_labels, transformation, heatmap_color, secondary_annotation, discrete_color_map, selected_cells, active_tab, current_figure):
+    def update_heatmap(selected_genes, selected_annotation, selected_labels, transformation, heatmap_color, secondary_annotation, discrete_color_map, secondary_colormap, selected_cells, active_tab, current_figure):
         # Lazy loading: only update if this tab is active
         if active_tab != 'heatmap-tab':
             # Return the current figure if it exists, otherwise return empty
@@ -1721,65 +1829,42 @@ def single_cell_callbacks(app, adata, prefix):
         # When cells are selected, selected_labels will be auto-updated to match
         filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
         
-        # Use heatmap2 if secondary annotation is different from primary annotation and not "None"
-        if secondary_annotation and secondary_annotation != 'None' and secondary_annotation != selected_annotation:
-            # Create color maps for consistent coloring
+        # Create color maps for both primary and secondary annotations
+        # Primary annotation color map (let unified function handle defaults)
+        groupby1_label_color_map = None
+        if discrete_color_map:
+            discrete_palette = palette_json["color_palettes"][discrete_color_map]
             unique_labels1 = sorted(adata.obs[selected_annotation].unique())
+            groupby1_label_color_map = {
+                label: discrete_palette[i % len(discrete_palette)] for i, label in enumerate(unique_labels1)
+            }
+        
+        # Secondary annotation color map
+        groupby2_label_color_map = None
+        if secondary_annotation and secondary_annotation != 'None' and secondary_annotation != selected_annotation:
             unique_labels2 = sorted(adata.obs[secondary_annotation].unique())
-            
-            # Use discrete color map if selected, otherwise use default
-            if discrete_color_map:
-                discrete_palette = palette_json["color_palettes"][discrete_color_map]
-                groupby1_label_color_map = {
-                    label: discrete_palette[i % len(discrete_palette)] for i, label in enumerate(unique_labels1)
-                }
+            if secondary_colormap:
+                secondary_palette = palette_json["color_palettes"][secondary_colormap]
                 groupby2_label_color_map = {
-                    label: discrete_palette[i % len(discrete_palette)] for i, label in enumerate(unique_labels2)
+                    label: secondary_palette[i % len(secondary_palette)] for i, label in enumerate(unique_labels2)
                 }
-            else:
-                from guanaco.data_loader import color_config
-                groupby1_label_color_map = {
-                    label: color_config[i % len(color_config)] for i, label in enumerate(unique_labels1)
-                }
-                groupby2_label_color_map = {
-                    label: color_config[i % len(color_config)] for i, label in enumerate(unique_labels2)
-                }
-            
-            return plot_heatmap2(
-                adata=filtered_adata,
-                genes=selected_genes,
-                groupby1=selected_annotation,
-                groupby2=secondary_annotation,
-                labels=selected_labels,
-                log=(transformation == 'log'),
-                z_score=(transformation == 'zscore'),
-                boundary=1,
-                color_map=heatmap_color,
-                groupby1_label_color_map=groupby1_label_color_map,
-                groupby2_label_color_map=groupby2_label_color_map
-            )
-        else:
-            # Use heatmap1 for single annotation
-            # Create color map for annotation bar if discrete color map is selected
-            groupby_label_color_map = None
-            if discrete_color_map:
-                discrete_palette = palette_json["color_palettes"][discrete_color_map]
-                unique_labels = sorted(adata.obs[selected_annotation].unique())
-                groupby_label_color_map = {
-                    label: discrete_palette[i % len(discrete_palette)] for i, label in enumerate(unique_labels)
-                }
-            
-            return plot_heatmap1(
-                adata=filtered_adata,
-                genes=selected_genes,
-                labels=selected_labels,
-                adata_obs=adata.obs,
-                groupby=selected_annotation,
-                transformation=transformation,
-                boundary=1,
-                color_map=heatmap_color,
-                groupby_label_color_map=groupby_label_color_map
-            )
+        
+        # Use unified heatmap function for all cases
+        return plot_unified_heatmap(
+            adata=filtered_adata,
+            genes=selected_genes,
+            groupby1=selected_annotation,
+            groupby2=secondary_annotation if secondary_annotation and secondary_annotation != 'None' and secondary_annotation != selected_annotation else None,
+            labels=selected_labels,
+            log=(transformation == 'log'),
+            z_score=(transformation == 'z_score'),
+            boundary=1,
+            color_map=heatmap_color,
+            groupby1_label_color_map=groupby1_label_color_map,
+            groupby2_label_color_map=groupby2_label_color_map,
+            adata_obs=adata.obs,  # For compatibility
+            transformation=transformation  # For compatibility
+        )
     
     # Add store for violin plot cache
     @app.callback(

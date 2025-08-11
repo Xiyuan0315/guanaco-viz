@@ -86,7 +86,15 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import dash_draggable
+import json
+from pathlib import Path
 from guanaco.config import common_config
+
+# Load color palettes
+cvd_color_path = Path(__file__).parent / "cvd_color.json"
+with open(cvd_color_path, "r") as f:
+    palette_json = json.load(f)
+palette_names = list(palette_json["color_palettes"].keys())
 
 
 # Get the available color scales
@@ -108,7 +116,7 @@ def generate_heatmap_layout(adata, prefix):
                 {'label': 'Log', 'value': 'log'},
                 {'label': 'Z-score (across cell)', 'value': 'z_score'}
             ],
-            value='log',
+            value='None',
             inline=True,
             style={'marginBottom': '10px'}
         )
@@ -138,6 +146,22 @@ def generate_heatmap_layout(adata, prefix):
             ],
             value='viridis', 
             clearable=False,
+            style={'width': '200px', 'marginBottom': '10px'}
+        )
+    ])
+
+    # --- Secondary Annotation Color Map ---
+    secondary_annotation_colormap_dropdown = html.Div([
+        html.Label(
+            'Secondary Annotation ColorMap:',
+            style={'fontWeight': 'bold', 'marginBottom': '5px'}
+        ),
+        dcc.Dropdown(
+            id=f'{prefix}-heatmap-secondary-colormap-dropdown',
+            options=[{'label': name, 'value': name} for name in palette_names],
+            value='tab20',  # Default to tab20 as you requested
+            placeholder="Select colormap for secondary annotation",
+            clearable=True,
             style={'width': '200px', 'marginBottom': '10px'}
         )
     ])
@@ -210,6 +234,7 @@ def generate_heatmap_layout(adata, prefix):
         heatmap_transformation_selection,
         heatmap_secondary_dropdown,
         dotmatrix_color_map_dropdown,
+        secondary_annotation_colormap_dropdown,
         draggable_container
     ], style={'padding': '20px', 'marginBottom': '15px'})
 
