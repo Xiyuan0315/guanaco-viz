@@ -187,6 +187,17 @@ def plot_violin1(adata, genes, labels, groupby, transformation=None, show_box=Fa
         for label in labels:
             if label in grouped_data.groups:
                 group_data = grouped_data.get_group(label)
+                
+                # Calculate variance to determine bandwidth (seaborn-like behavior)
+                variance = np.var(group_data['Expression'])
+                if variance < 1e-10:  # Near-zero variance
+                    bandwidth = 0.01
+                    spanmode = 'soft'
+                else:
+                    # Normal bandwidth for data with variance
+                    bandwidth = 0.2
+                    spanmode = 'hard'
+                
                 fig.add_trace(
                     go.Violin(
                         y=group_data['Expression'],
@@ -197,8 +208,8 @@ def plot_violin1(adata, genes, labels, groupby, transformation=None, show_box=Fa
                         meanline_visible=True,
                         showlegend=(i == 0),
                         name=label,
-                        spanmode='hard',
-                        bandwidth=0.2,
+                        spanmode=spanmode,
+                        bandwidth=bandwidth,
                         fillcolor=groupby_label_color_map[label],
                         line_color='DarkSlateGrey',
                         hoveron='violins',

@@ -1,7 +1,6 @@
 import plotly.graph_objs as go
 import pandas as pd
 import numpy as np
-import plotly.express as px
 from .gene_extraction_utils import extract_gene_expression, apply_transformation
 
 
@@ -149,12 +148,22 @@ def plot_categorical_embedding(
         df[gene] = extract_gene_expression(adata, gene)
 
     # Label & color mapping
-    unique_labels = sorted(df[color].unique())
-    color_map = color_map or px.colors.qualitative.Plotly
+    # Get ALL unique labels from the original dataset for consistent color assignment
+    all_unique_labels = sorted(adata.obs[color].unique())
+    
+    # Import the consistent color config if no custom color map provided
+    if color_map is None:
+        from guanaco.data_loader import color_config
+        color_map = color_config
+    
+    # Assign colors based on ALL labels (not just filtered ones) to maintain consistency
     label_to_color = {
         label: color_map[i % len(color_map)]
-        for i, label in enumerate(unique_labels)
+        for i, label in enumerate(all_unique_labels)
     }
+    
+    # Get the labels that are actually present in the current data
+    unique_labels = sorted(df[color].unique())
 
     fig = go.Figure()
     
@@ -235,7 +244,7 @@ def plot_categorical_embedding(
             bgcolor='rgba(0,0,0,0)',
             itemclick='toggle',
             itemdoubleclick='toggleothers',
-            font=dict(size=10)
+            font=dict(size=16)
         ) if not on_data else None,
         margin=dict(t=60, r=10, l=10, b=40)
     )
@@ -311,12 +320,24 @@ def plot_combined_embedding(
             ))
         else:
             # Categorical annotation
-            unique_labels = sorted(df[annotation].unique())
-            color_map = annotation_color_map or px.colors.qualitative.Plotly
+            # Get ALL unique labels from the original dataset for consistent color assignment
+            all_unique_labels = sorted(adata.obs[annotation].unique())
+            
+            # Import the consistent color config if no custom color map provided
+            if annotation_color_map is None:
+                from guanaco.data_loader import color_config
+                color_map = color_config
+            else:
+                color_map = annotation_color_map
+            
+            # Assign colors based on ALL labels (not just filtered ones) to maintain consistency
             label_to_color = {
                 label: color_map[i % len(color_map)]
-                for i, label in enumerate(unique_labels)
+                for i, label in enumerate(all_unique_labels)
             }
+            
+            # Get the labels that are actually present in the current data
+            unique_labels = sorted(df[annotation].unique())
             
             for label in unique_labels:
                 mask = df[annotation] == label
@@ -432,7 +453,8 @@ def plot_combined_embedding(
             y=1,
             xanchor='center',
             yanchor='top',
-            orientation='h'
+            orientation='h',
+            font=dict(size=12)
         ),
         margin=dict(t=50, b=50, l=50, r=50)
     )

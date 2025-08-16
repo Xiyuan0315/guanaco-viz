@@ -10,8 +10,7 @@ import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 from guanaco.pages.single_cell.cellplotly.embedding import plot_continuous_embedding, plot_coexpression_embedding
-from guanaco.pages.single_cell.cellplotly.heatmap1 import plot_heatmap1
-from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_heatmap2, plot_unified_heatmap
+from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_unified_heatmap
 from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
 from guanaco.pages.single_cell.cellplotly.violin2_new import plot_violin2_new
 from guanaco.pages.single_cell.cellplotly.stacked_bar import plot_stacked_bar
@@ -678,10 +677,7 @@ def plot_categorical_embedding_with_fixed_colors(
     color_map=None, marker_size=5, opacity=1,
     legend_show='on legend', axis_show=True
 ):
-    """
-    Wrapper around plot_categorical_embedding that ensures color consistency
-    by using all categories from the full dataset for color mapping.
-    """
+
     # Get all unique labels from the full dataset to ensure consistent colors
     all_unique_labels = sorted(adata_full.obs[color].unique())
     
@@ -793,7 +789,7 @@ def plot_categorical_embedding_with_fixed_colors(
             bgcolor='rgba(0,0,0,0)',
             itemclick='toggle',
             itemdoubleclick='toggleothers',
-            font=dict(size=10)
+            font=dict(size=14)
         ) if not on_data else None,
         margin=dict(t=60, r=10, l=10, b=40)
     )
@@ -1862,7 +1858,6 @@ def single_cell_callbacks(app, adata, prefix):
             color_map=heatmap_color,
             groupby1_label_color_map=groupby1_label_color_map,
             groupby2_label_color_map=groupby2_label_color_map,
-            adata_obs=adata.obs,  # For compatibility
             transformation=transformation  # For compatibility
         )
     

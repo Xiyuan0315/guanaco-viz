@@ -353,6 +353,16 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
         for i, group in enumerate(meta1_groups):
             group_data = df[df[meta1] == group]['Expression']
             
+            # Calculate variance to determine bandwidth (seaborn-like behavior)
+            variance = np.var(group_data)
+            if variance < 1e-10:  # Near-zero variance
+                bandwidth = 0.01
+                spanmode = 'soft'
+            else:
+                # Normal bandwidth for data with variance
+                bandwidth = 0.2
+                spanmode = 'hard'
+            
             fig.add_trace(go.Violin(
                 x=[group] * len(group_data),
                 y=group_data,
@@ -361,8 +371,8 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
                 points=points_mode,
                 meanline_visible=True,
                 width=0.8,
-                bandwidth=0.2,
-                spanmode='hard',
+                bandwidth=bandwidth,
+                spanmode=spanmode,
                 fillcolor=color_config[i % len(color_config)],
                 line_color='DarkSlateGrey',
                 hoveron='violins',
@@ -389,6 +399,16 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
                     subset = facet_data[facet_data[meta2] == m2_group]
                     
                     if len(subset) > 0:
+                        # Calculate variance to determine bandwidth (seaborn-like behavior)
+                        variance = np.var(subset['Expression'])
+                        if variance < 1e-10:  # Near-zero variance
+                            bandwidth = 0.01
+                            spanmode = 'soft'
+                        else:
+                            # Normal bandwidth for data with variance
+                            bandwidth = 0.2
+                            spanmode = 'hard'
+                        
                         fig.add_trace(go.Violin(
                             x=[m1_group] * len(subset),
                             y=subset['Expression'],
@@ -401,8 +421,8 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
                             box_visible=show_box,
                             points=points_mode,
                             meanline_visible=True,
-                            bandwidth=0.2,
-                            spanmode='hard',
+                            bandwidth=bandwidth,
+                            spanmode=spanmode,
                             fillcolor=color_map[m2_group],
                             line_color='DarkSlateGrey',
                             hoveron='violins',
@@ -428,6 +448,16 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
                     if len(subset) > 0:
                         show_legend = m2_group not in [t.legendgroup for t in fig.data]
                         
+                        # Calculate variance to determine bandwidth (seaborn-like behavior)
+                        variance = np.var(subset['Expression'])
+                        if variance < 1e-10:  # Near-zero variance
+                            bandwidth = 0.01
+                            spanmode = 'soft'
+                        else:
+                            # Normal bandwidth for data with variance
+                            bandwidth = 0.2
+                            spanmode = 'hard'
+                        
                         fig.add_trace(go.Violin(
                             x=[x_labels[x_pos]] * len(subset),
                             y=subset['Expression'],
@@ -437,12 +467,12 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
                             box_visible=show_box,
                             points=points_mode,
                             meanline_visible=True,
-                            bandwidth=0.2,
+                            bandwidth=bandwidth,
                             fillcolor=color_map[m2_group],
                             line_color='DarkSlateGrey',
                             hoveron='violins',
                             hoverinfo='y',
-                            spanmode='hard',
+                            spanmode=spanmode,
                             jitter=0.05,
                             showlegend=show_legend
                         ))
@@ -477,6 +507,16 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
                 if len(subset) > 0:
                     show_legend = m2_group not in [t.legendgroup for t in fig.data]
                     
+                    # Calculate variance to determine bandwidth (seaborn-like behavior)
+                    variance = np.var(subset['Expression'])
+                    if variance < 1e-10:  # Near-zero variance
+                        bandwidth = 0.01
+                        spanmode = 'soft'
+                    else:
+                        # Normal bandwidth for data with variance
+                        bandwidth = 0.2
+                        spanmode = 'hard'
+                    
                     fig.add_trace(go.Violin(
                         x=[x_labels[x_pos]] * len(subset),
                         y=subset['Expression'],
@@ -486,12 +526,12 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
                         box_visible=show_box,
                         points=points_mode,
                         meanline_visible=True,
-                        bandwidth=0.2,
+                        bandwidth=bandwidth,
                         fillcolor=color_map[m2_group],
                         line_color='DarkSlateGrey',
                         hoveron='violins',
                         hoverinfo='y',
-                        spanmode='hard',
+                        spanmode=spanmode,
                         jitter=0.05,
                         showlegend=show_legend
                     ))
@@ -525,7 +565,7 @@ def plot_violin2_new(adata, key, meta1, meta2, mode, transformation='log',
         xaxis_title=xaxis_title,
         yaxis_title='Expression',
         legend=dict(
-            font=dict(size=10),
+            font=dict(size=12),
             title=dict(text=meta2 if mode != 'mode1' else "", font=dict(size=12))
         ),
         margin=dict(b=80, t=80)
