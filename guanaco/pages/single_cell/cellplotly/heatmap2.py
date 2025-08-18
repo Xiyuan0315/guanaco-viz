@@ -451,8 +451,8 @@ def plot_heatmap2_continuous(
 
     # Set up colors - exactly like violin1.py approach
     unique_labels = sorted(adata_obs[groupby1].unique()) if adata_obs is not None else sorted(adata.obs[groupby1].unique())
-    if groupby1_label_color_map is None:
-        groupby1_label_color_map = {label: color_config[i % len(color_config)] for i, label in enumerate(unique_labels)}
+    # if groupby1_label_color_map is None:
+    #     groupby1_label_color_map = {label: color_config[i % len(color_config)] for i, label in enumerate(unique_labels)}
 
     heatmap_height = 40 * len(valid_genes)
     bar_chart_height = 30

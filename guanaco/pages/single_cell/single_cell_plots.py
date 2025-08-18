@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 import warnings
-import numpy as np
 import pandas as pd
 import dash
 from dash import dcc, html, Input, Output, exceptions, State, callback_context, ALL, no_update
@@ -9,7 +8,7 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
-from guanaco.pages.single_cell.cellplotly.embedding import plot_continuous_embedding, plot_coexpression_embedding
+from guanaco.pages.single_cell.cellplotly.embedding import plot_continuous_embedding, plot_coexpression_embedding,plot_categorical_embedding_with_fixed_colors,plot_continuous_annotation
 from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_unified_heatmap
 from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
 from guanaco.pages.single_cell.cellplotly.violin2_new import plot_violin2_new
@@ -35,8 +34,34 @@ with open(cvd_color_path, "r") as f:
 palette_names = list(palette_json["color_palettes"].keys())
 
 
-# ============= Scatter Plot Helper Functions =============
-# Note: The main scatter layout is now in mod020_scatter.py
+def apply_relayout(fig, relayout):
+    if not relayout:
+        return fig
+
+    if all(k in relayout for k in ["xaxis.range[0]", "xaxis.range[1]", "yaxis.range[0]", "yaxis.range[1]"]):
+        fig.update_layout(
+            xaxis=dict(range=[relayout["xaxis.range[0]"], relayout["xaxis.range[1]"]]),
+            yaxis=dict(range=[relayout["yaxis.range[0]"], relayout["yaxis.range[1]"]]),
+        )
+        return fig
+
+    if "xaxis.range" in relayout and "yaxis.range" in relayout:
+        fig.update_layout(
+            xaxis=dict(range=relayout["xaxis.range"]),
+            yaxis=dict(range=relayout["yaxis.range"]),
+        )
+        return fig
+
+    # 3) Reset axes (autorange)
+    if "xaxis.autorange" in relayout or "autosize" in relayout:
+        fig.update_layout(
+            xaxis=dict(autorange=True),
+            yaxis=dict(autorange=True),
+        )
+        return fig
+
+    return fig
+
 
 def initialize_scatter_components(adata):
     embedding_prefixes = {
@@ -78,7 +103,6 @@ def create_control_components(adata, prefix):
 
 def generate_annotation_dropdown(anno_list, prefix, default_value=None):
     # Generate dropdown with both annotations and genes
-    # Use the default_value if provided, otherwise use first item
     return dcc.Dropdown(
         id=f'{prefix}-annotation-dropdown', 
         options=[{'label': label, 'value': label} for label in anno_list],
@@ -89,7 +113,6 @@ def generate_annotation_dropdown(anno_list, prefix, default_value=None):
 
 
 def generate_scatter_gene_selection(combined_list, prefix, default_value=None):
-    # Now accepts combined list of annotations and genes, with optional default value
     return dcc.Dropdown(
         id=f'{prefix}-scatter-gene-selection', 
         options=[{'label': label, 'value': label} for label in combined_list], 
@@ -97,7 +120,6 @@ def generate_scatter_gene_selection(combined_list, prefix, default_value=None):
         placeholder="Search annotations or genes...", 
         style={'marginBottom': '15px'}
     )
-
 
 def create_global_metadata_filter(adata, prefix):
     """Create global metadata filter component"""
@@ -203,8 +225,6 @@ def create_global_metadata_filter(adata, prefix):
 
 def scatter_layout(adata,prefix):
 
-
-
     scatter_transformation_selection = html.Div([
         dbc.RadioItems(
             id=f'{prefix}-scatter-log-or-zscore',
@@ -217,7 +237,6 @@ def scatter_layout(adata,prefix):
             style={'fontSize': '14px'} 
         )
     ])
-
 
     scatter_order_selection = html.Div([
         dbc.RadioItems(
@@ -374,7 +393,6 @@ def scatter_layout(adata,prefix):
         # Add Store component to hold selected cells data
         dcc.Store(id=f'{prefix}-selected-cells-store'),
         
-        # Add global metadata filter at the top
         create_global_metadata_filter(adata, prefix),
         
         dbc.Row([
@@ -416,49 +434,25 @@ def scatter_layout(adata,prefix):
     dbc.Col(
         html.Div(
             [
-                html.Label("Select Annotation/Gene:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+                html.Label("Select Annotation/check:", style={'fontWeight': 'bold', 'marginBottom': '5px'}),
                 generate_annotation_dropdown(anno_list=combined_list, prefix=prefix, default_value=default_annotation),
+                # Add invisible spacer to align with gene scatter's radio buttons
+                html.Div(style={'height': '25px', 'marginBottom': '5px'}),  # Same height as RadioItems
                 dcc.Loading(
                     id=f"{prefix}-loading-annotaion-scatter",
                     type="circle",
-                    children=dcc.Graph(id=f'{prefix}-annotation-scatter', config=scatter_config),
-                    style={"height": "100%"},
+                    children=dcc.Graph(
+                        id=f'{prefix}-annotation-scatter', 
+                        config=scatter_config,
+                        style={'height': '60vh', 'width': '100%'}
+                    ),
+                    style={'height': '60vh', 'width': '100%'}
                 ),
-                # Add button below the scatter plot
-                html.Div([
-                    dbc.Row([
-                        dbc.Col([
-                            dbc.Button(
-                                "Update other Plots",
-                                id=f"{prefix}-update-plots-button",
-                                color="primary",
-                                n_clicks=0,
-                                style={'width': '100%'}
-                            ),
-                        ], width=8),
-                        dbc.Col([
-                            dbc.InputGroup([
-                                dbc.DropdownMenu(
-                                    [
-                                        dbc.DropdownMenuItem("Cell IDs (.txt)", id=f"{prefix}-download-cellids"),
-                                        dbc.DropdownMenuItem("Subset AnnData (.h5ad)", id=f"{prefix}-download-adata"),
-                                    ],
-                                    label="Download",
-                                    color="secondary",
-                                    id=f"{prefix}-download-menu",
-                                    disabled=True
-                                ),
-                                dcc.Download(id=f"{prefix}-download-cells-data")
-                            ], style={'width': '100%'})
-                        ], width=4)
-                    ], style={'marginTop': '10px'}),
-                    html.Div(id=f"{prefix}-selection-status", style={'textAlign': 'center', 'marginTop': '5px'})
-                ]),
             ],
             className="dbc",
             style={'marginBottom': '20px'}
         ),
-        xs=12, sm=12, md=4, lg=4, xl=5 # Full width on small screens, half on larger screens
+        xs=12, sm=12, md=4, lg=4, xl=5 # Full width on small screens, equal split of remaining space on larger screens
     ),
     dbc.Col(
         html.Div(
@@ -526,15 +520,51 @@ def scatter_layout(adata,prefix):
                 dcc.Loading(
                     id=f"{prefix}-loading-gene-scatter",
                     type="circle",
-                    children=dcc.Graph(id=f'{prefix}-gene-scatter', config=gene_scatter_config),
-                    style={"height": "100%"},
+                    children=dcc.Graph(
+                        id=f'{prefix}-gene-scatter', 
+                        config=gene_scatter_config,
+                        style={'height': '60vh', 'width': '100%'}
+                    ),
+                    style={'height': '60vh', 'width': '100%'}
                 ),
             ],
             className="dbc",
-            style={'marginBottom': '20px','marginRight': '10px'}
+            style={'marginBottom': '20px'}
         ),
-        xs=12, sm=12, md=4, lg=4, xl=5  # Full width on small screens, half on larger screens
+        xs=12, sm=12, md=4, lg=4, xl=5  # Full width on small screens, equal split of remaining space on larger screens
     ),
+        ]),
+        
+        # Add control buttons as a separate row below the scatter plots
+        dbc.Row([
+            dbc.Col(width={"size": 0, "offset": 0, "md": 4, "lg": 4, "xl": 2}),  # Empty column to align with control column
+            dbc.Col([
+                html.Div([
+                    html.Div([
+                        dbc.Button(
+                            "Update other Plots",
+                            id=f"{prefix}-update-plots-button",
+                            color="primary",
+                            n_clicks=0,
+                            style={'marginRight': '10px', 'display': 'inline-block'}
+                        ),
+                        dbc.DropdownMenu(
+                            [
+                                dbc.DropdownMenuItem("Cell IDs (.txt)", id=f"{prefix}-download-cellids"),
+                                dbc.DropdownMenuItem("Subset AnnData (.h5ad)", id=f"{prefix}-download-adata"),
+                            ],
+                            label="Download",
+                            color="secondary",
+                            id=f"{prefix}-download-menu",
+                            disabled=True,
+                            style={'display': 'inline-block'}
+                        ),
+                        dcc.Download(id=f"{prefix}-download-cells-data")
+                    ], style={'textAlign': 'left'}),
+                    html.Div(id=f"{prefix}-selection-status", style={'textAlign': 'left', 'marginTop': '5px'})
+                ], style={'marginTop': '10px'})
+            ], xs=12, sm=12, md=4, lg=4, xl=5),  # Align with annotation scatter column
+            dbc.Col(width={"size": 0, "md": 4, "lg": 4, "xl": 5})  # Empty column to balance layout
         ])
     ])
 
@@ -670,252 +700,6 @@ def is_continuous_annotation(adata, annotation, threshold=50):
         n_unique = adata.obs[annotation].nunique()
         return n_unique >= threshold
     return False
-
-def plot_categorical_embedding_with_fixed_colors(
-    adata, adata_full, gene, embedding_key, color,
-    x_axis=None, y_axis=None,
-    color_map=None, marker_size=5, opacity=1,
-    legend_show='on legend', axis_show=True
-):
-
-    # Get all unique labels from the full dataset to ensure consistent colors
-    all_unique_labels = sorted(adata_full.obs[color].unique())
-    
-    # Create color mapping for ALL categories (not just filtered ones)
-    color_map = color_map or px.colors.qualitative.Plotly
-    label_to_color_dict = {
-        label: color_map[i % len(color_map)]
-        for i, label in enumerate(all_unique_labels)
-    }
-    
-    embedding_prefixes = {
-        "X_umap": "UMAP", "X_pca": "PCA", "X_tsne": "t-SNE",
-        "X_diffmap": "DiffMap", "X_phate": "PHATE", "X_draw_graph_fa": "FA"
-    }
-    on_data = legend_show == 'on data'
-
-    # Prepare embedding coordinates
-    embedding_data = adata.obsm[embedding_key]
-    prefix = embedding_prefixes.get(embedding_key, embedding_key.upper())
-    dims = [f"{prefix}{i+1}" for i in range(embedding_data.shape[1])]
-    x_axis = x_axis or dims[0]
-    y_axis = y_axis or (dims[1] if len(dims) > 1 else dims[0])
-
-    # Prepare DataFrame
-    df = pd.DataFrame(embedding_data, columns=dims)
-    df[color] = adata.obs[color].values
-    
-    # Only extract gene expression if gene is provided
-    if gene is not None and gene in adata.var_names:
-        from guanaco.pages.single_cell.cellplotly.gene_extraction_utils import extract_gene_expression
-        df[gene] = extract_gene_expression(adata, gene)
-
-    # Get unique labels in the filtered data
-    unique_labels_filtered = sorted(df[color].unique())
-
-    fig = go.Figure()
-    
-    # First, add a grey background trace for all cells
-    fig.add_trace(go.Scattergl(
-        x=df[x_axis],
-        y=df[y_axis],
-        mode='markers',
-        marker=dict(
-            size=marker_size,
-            color='lightgrey',
-            opacity=opacity * 0.3,
-        ),
-        name='Background',
-        hoverinfo='skip',
-        showlegend=False,
-        visible=True
-    ))
-
-    # Add one trace per category (only for categories present in filtered data)
-    for label in unique_labels_filtered:
-        mask = df[color] == label
-        fig.add_trace(go.Scattergl(
-            x=df.loc[mask, x_axis],
-            y=df.loc[mask, y_axis],
-            mode='markers',
-            marker=dict(
-                size=marker_size,
-                color=label_to_color_dict[label],  # Use color from full dataset mapping
-                opacity=opacity,
-            ),
-            name=str(label),
-            customdata=df.loc[mask, color] if gene is None else np.stack([df.loc[mask, color], df.loc[mask, gene]], axis=-1),
-            hoverinfo='skip',  # Disable hover
-            showlegend=not on_data,
-            legendgroup=str(label),
-        ))
-
-    # Add labels at cluster medians if requested
-    if on_data:
-        for label in unique_labels_filtered:
-            mask = df[color] == label
-            median_x = df.loc[mask, x_axis].median()
-            median_y = df.loc[mask, y_axis].median()
-            fig.add_annotation(
-                x=median_x, y=median_y,
-                text=f"<b>{label}</b>",
-                showarrow=False,
-                font=dict(size=12, color='black'),
-                xanchor='center', yanchor='middle',
-                opacity=0.9,
-            )
-
-    # Layout settings
-    fig.update_layout(
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        title=dict(text=f"<b>{color}</b>", x=0.5, y=0.95, xanchor='center', yanchor='bottom'),
-        xaxis=dict(
-            title=x_axis,
-            showgrid=False, zeroline=False,
-            scaleanchor='y', constrain='domain',
-            tickfont=dict(color="rgba(0,0,0,0)" if not axis_show else "black")
-        ),
-        yaxis=dict(
-            title=y_axis,
-            showgrid=False, zeroline=False,
-            constrain='domain',
-            tickfont=dict(color="rgba(0,0,0,0)" if not axis_show else "black")
-        ),
-        legend=dict(
-            orientation='v',
-            itemsizing='constant',
-            x=1.02, y=0.5,
-            bgcolor='rgba(0,0,0,0)',
-            itemclick='toggle',
-            itemdoubleclick='toggleothers',
-            font=dict(size=12)
-        ) if not on_data else None,
-        margin=dict(t=60, r=10, l=10, b=40)
-    )
-
-    fig.update_xaxes(showline=True, linewidth=2, linecolor='black')
-    fig.update_yaxes(showline=True, linewidth=2, linecolor='black')
-
-    return fig
-
-def plot_continuous_annotation(
-    adata, embedding_key, annotation, x_axis=None, y_axis=None,
-    transformation=None, order=None, color_map='Viridis',
-    marker_size=5, opacity=1, axis_show=True
-):
-    """
-    Plot a continuous annotation (from obs) on a 2D embedding.
-    Modified to work with obs columns instead of gene expression.
-    """
-
-    
-    embedding_prefixes = {
-        'X_umap': 'UMAP', 'X_pca': 'PCA', 'X_tsne': 't-SNE',
-        'X_diffmap': 'DiffMap', 'X_phate': 'PHATE', 'X_draw_graph_fa': 'FA'
-    }
-    embedding_prefix = embedding_prefixes.get(embedding_key, embedding_key.upper())
-    embedding_data = adata.obsm[embedding_key]
-
-    # Set column names for the embedding
-    num_dimensions = embedding_data.shape[1]
-    embedding_columns = [f'{embedding_prefix}{i + 1}' for i in range(num_dimensions)]
-    embedding_df = pd.DataFrame(embedding_data, columns=embedding_columns)
-
-    # Default x and y axis
-    x_axis = x_axis or embedding_columns[0]
-    y_axis = y_axis or (embedding_columns[1] if len(embedding_columns) > 1 else embedding_columns[0])
-
-    # Extract annotation values (from obs instead of expression)
-    annotation_values = adata.obs[annotation].values
-    
-    # Only apply transformations if explicitly requested and data is numeric
-    # For annotation data, we usually want to see the raw values
-    if transformation and annotation_values.dtype in ['float32', 'float64', 'int32', 'int64']:
-        if transformation == 'log':
-            # Handle negative values for log transformation
-            min_val = annotation_values.min()
-            if min_val <= 0:
-                annotation_values = annotation_values - min_val + 1
-            annotation_values = np.log1p(annotation_values)
-        elif transformation == 'z_score':
-            annotation_values = (annotation_values - np.mean(annotation_values)) / np.std(annotation_values)
-
-    embedding_df[annotation] = annotation_values
-    # Add cell indices for selection tracking
-    embedding_df['_cell_idx'] = np.arange(len(embedding_df))
-
-    # Sort order
-    if order == 'max':
-        embedding_df_sorted = embedding_df.sort_values(by=annotation)
-    elif order == 'min':
-        embedding_df_sorted = embedding_df.sort_values(by=annotation, ascending=False)
-    elif order == 'random':
-        embedding_df_sorted = embedding_df.sample(frac=1, random_state=315).reset_index(drop=True)
-    else:
-        embedding_df_sorted = embedding_df
-
-    # Create scatter plot
-    fig = go.Figure()
-    fig.add_trace(go.Scattergl(
-        x=embedding_df_sorted[x_axis],
-        y=embedding_df_sorted[y_axis],
-        mode='markers',
-        marker=dict(
-            color=embedding_df_sorted[annotation],
-            colorscale=color_map,
-            cmin=embedding_df_sorted[annotation].min(),
-            cmax=embedding_df_sorted[annotation].max(),
-            size=marker_size,
-            opacity=opacity,
-            colorbar=dict(
-                title=f"{annotation}<br>{transformation if transformation else ''}",
-                len=0.8
-            )
-        ),
-        customdata=np.stack([embedding_df_sorted[annotation], embedding_df_sorted['_cell_idx']], axis=-1),  # Add customdata with cell index
-        hoverinfo='skip',  # Disable hover
-        selectedpoints=None,  # Enable selection
-        selected=dict(marker=dict(opacity=1)),  # Keep selected points fully visible
-        unselected=dict(marker=dict(opacity=0.2))  # Dim unselected points
-    ))
-
-    fig.update_layout(
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        title=dict(
-            text=f'<b>{annotation}</b>',
-            x=0.5,
-            y=0.95,
-            xanchor='center',
-            yanchor='bottom'
-        ),
-        xaxis=dict(
-            title=x_axis,
-            showgrid=False,
-            zeroline=False,
-            scaleanchor='y',
-            constrain='domain'
-        ),
-        yaxis=dict(
-            title=y_axis,
-            showgrid=False,
-            zeroline=False,
-            constrain='domain'
-        ),
-        margin=dict(t=60, r=10, l=10, b=40)
-    )
-
-    fig.update_xaxes(
-        showline=True, linewidth=2, linecolor='black',
-        tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
-    )
-    fig.update_yaxes(
-        showline=True, linewidth=2, linecolor='black',
-        tickfont=dict(color='black' if axis_show else 'rgba(0,0,0,0)')
-    )
-
-    return fig
 
 # ============= Main Callback Functions =============
 
@@ -1182,9 +966,20 @@ def single_cell_callbacks(app, adata, prefix):
     def update_scatter_gene_selection(search_value):
         if not search_value:
             raise exceptions.PreventUpdate
+                # Include both metadata and genes
+        label_list = adata.obs.keys().to_list()
         gene_list = adata.var_names.to_list()
+        
+        # Search in metadata first, then genes
+        matching_labels = [label for label in label_list if search_value.lower() in label.lower()]
         matching_genes = [gene for gene in gene_list if search_value.lower() in gene.lower()]
-        return [{'label': gene, 'value': gene} for gene in matching_genes[:20]]
+        
+        # Combine results with metadata first, then genes (limited to 10 total)
+        all_matches = matching_labels + matching_genes
+        return [{'label': item, 'value': item} for item in all_matches[:10]]
+        # gene_list = adata.var_names.to_list()
+        # matching_genes = [gene for gene in gene_list if search_value.lower() in gene.lower()]
+        # return [{'label': gene, 'value': gene} for gene in matching_genes[:20]]
     
     @app.callback(
         Output(f'{prefix}-scatter-gene2-selection', 'options'),
@@ -1285,8 +1080,8 @@ def single_cell_callbacks(app, adata, prefix):
             
             fig = plot_categorical_embedding_with_fixed_colors(
                 adata=plot_adata,
-                adata_full=adata,  # Pass full adata for color reference
-                gene=None,  # Don't pass gene to avoid unnecessary computation
+                adata_full=adata,  
+                gene=None,  
                 embedding_key=clustering_method,
                 color=annotation,
                 x_axis=x_axis,
@@ -1298,54 +1093,7 @@ def single_cell_callbacks(app, adata, prefix):
                 axis_show=axis_show,
             )
         
-        # Enable selection mode and set height to match CSS
-        fig.update_layout(
-            height=450,
-            margin=dict(t=60, b=40, l=40, r=40),  # Increased top margin for title space
-            # Fix aspect ratio to prevent distortion
-            xaxis=dict(
-                scaleanchor='y',
-                scaleratio=1,
-                constrain='domain'
-            ),
-            yaxis=dict(
-                constrain='domain'
-            )
-        )
-        
-        # Apply zoom from gene scatter plot for bidirectional sync
-        if gene_relayout:
-            if 'xaxis.range[0]' in gene_relayout and 'yaxis.range[0]' in gene_relayout:
-                # User has zoomed/panned on gene scatter - apply those exact ranges
-                x_range = [gene_relayout['xaxis.range[0]'], gene_relayout['xaxis.range[1]']]
-                y_range = [gene_relayout['yaxis.range[0]'], gene_relayout['yaxis.range[1]']]
-                fig.update_layout(
-                    xaxis=dict(
-                        range=x_range,
-                        scaleanchor='y',
-                        scaleratio=1,
-                        constrain='domain'
-                    ), 
-                    yaxis=dict(
-                        range=y_range,
-                        constrain='domain'
-                    )
-                )
-            elif 'xaxis.autorange' in gene_relayout or 'autosize' in gene_relayout:
-                # Reset zoom was triggered on gene scatter - match the autorange behavior
-                fig.update_layout(
-                    xaxis=dict(
-                        autorange=True,
-                        scaleanchor='y',
-                        scaleratio=1,
-                        constrain='domain'
-                    ),
-                    yaxis=dict(
-                        autorange=True,
-                        constrain='domain'
-                    )
-                )
-        
+        fig = apply_relayout(fig, gene_relayout)
         return fig
     
     @app.callback(
@@ -1459,53 +1207,10 @@ def single_cell_callbacks(app, adata, prefix):
                 axis_show=axis_show,
             )
         
-        # Always fix aspect ratio first
-        fig.update_layout(
-            height=450,
-            margin=dict(t=60, b=40, l=40, r=40),  # Consistent margins with annotation scatter
-            xaxis=dict(
-                scaleanchor='y',
-                scaleratio=1,
-                constrain='domain'
-            ),
-            yaxis=dict(
-                constrain='domain'
-            )
-        )
         
-        # Apply zoom from annotation scatter plot
-        if annotation_relayout:
-            if 'xaxis.range[0]' in annotation_relayout and 'yaxis.range[0]' in annotation_relayout:
-                # User has zoomed/panned - apply those exact ranges
-                x_range = [annotation_relayout['xaxis.range[0]'], annotation_relayout['xaxis.range[1]']]
-                y_range = [annotation_relayout['yaxis.range[0]'], annotation_relayout['yaxis.range[1]']]
-                fig.update_layout(
-                    xaxis=dict(
-                        range=x_range,
-                        scaleanchor='y',
-                        scaleratio=1,
-                        constrain='domain'
-                    ), 
-                    yaxis=dict(
-                        range=y_range,
-                        constrain='domain'
-                    )
-                )
-            elif 'xaxis.autorange' in annotation_relayout or 'autosize' in annotation_relayout:
-                # Reset zoom was triggered - match the autorange behavior
-                fig.update_layout(
-                    xaxis=dict(
-                        autorange=True,
-                        scaleanchor='y',
-                        scaleratio=1,
-                        constrain='domain'
-                    ),
-                    yaxis=dict(
-                        autorange=True,
-                        constrain='domain'
-                    )
-                )
-            
+
+        fig = apply_relayout(fig, annotation_relayout)
+
         return fig
     
     # ===== Threshold Slider Update Callback =====
@@ -2240,8 +1945,6 @@ def single_cell_callbacks(app, adata, prefix):
         
         return new_state
     
-    
-    # Callback to populate AgGrid columns for x-axis ordering
     @app.callback(
         [Output(f'{prefix}-stacked-bar-x-order-grid', 'columnDefs'),
          Output(f'{prefix}-stacked-bar-x-order-grid', 'rowData')],
@@ -2417,7 +2120,6 @@ def single_cell_callbacks(app, adata, prefix):
             return fig
         
         # Filter data
-        # When cells are selected, selected_labels will be auto-updated to match
         filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
         
         # Get color map

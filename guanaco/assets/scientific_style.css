@@ -316,6 +316,6 @@
 }
 
 /* Prevent layout shift during graph updates */
-[id$="-annotation-scatter"] {
+/* [id$="-annotation-scatter"] {
     min-height: 450px !important;
-}
+} */

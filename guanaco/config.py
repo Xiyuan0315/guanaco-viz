@@ -1,5 +1,4 @@
 common_config = {
-    'responsive': True,
     'toImageButtonOptions': {
         'format': 'svg',
         'scale': 1,
@@ -64,7 +63,7 @@ def optimize_scatter_performance(fig):
             'easing': 'cubic-in-out'
         },
         # Reduce reflow calculations
-        # autosize=True,
+        autosize=True,
         # Optimize for large datasets
         hovermode='closest'  # Reduces hover calculations
     )
@@ -79,30 +78,4 @@ def optimize_scatter_performance(fig):
                 )
             )
     
-    return fig
-
-# Function to ensure pan is default for any figure
-def set_pan_default(fig):
-    """Ensure pan is the default drag mode for any figure"""
-    fig.update_layout(dragmode='pan')
-    return fig
-
-# Function to fix scatter plot aspect ratio and size
-def fix_scatter_aspect_ratio(fig):
-    """Fix scatter plot aspect ratio to prevent rectangular distortion during zoom"""
-    fig.update_layout(
-        # Keep square aspect ratio
-        xaxis=dict(
-            scaleanchor='y',     # Lock x-axis scale to y-axis
-            scaleratio=1,        # 1:1 ratio
-            constrain='domain'   # Constrain to plot area
-        ),
-        yaxis=dict(
-            constrain='domain'   # Constrain to plot area
-        ),
-        # Fixed dimensions
-        autosize=True,
-        # Maintain aspect ratio during interactions
-        dragmode='pan'
-    )
     return fig
