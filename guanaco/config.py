@@ -18,13 +18,11 @@ scatter_config = {
         'filename': 'annotation_scatter'
     },
     'displaylogo': False,
-    'scrollZoom': True,  # Enable scroll to zoom
-    'dragmode': 'pan',   # Default drag mode is pan
+    'scrollZoom': False,  # Disable scroll to zoom
     'doubleClick': 'reset',  # Double click to reset zoom
     'showTips': False,  # Reduce hover updates
     'frameMargins': 0,  # Reduce margin calculations
-    'modeBarButtonsToRemove': ['select', 'zoom2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'zoom', 'resetScale2d'],
-    'modeBarButtonsToAdd': ['select2d', 'lasso2d', 'pan2d']  # Selection tools for cell selection
+    'modeBarButtonsToRemove': ['select',  'autoScale2d','zoomIn','zoomOut'],
 }
 
 # Gene scatter config (right side) - pan only, no selection tools
@@ -36,13 +34,11 @@ gene_scatter_config = {
         'filename': 'gene_scatter'
     },
     'displaylogo': False,
-    'scrollZoom': True,  # Enable scroll to zoom
-    'dragmode': 'pan',   # Default drag mode is pan
+    'scrollZoom': False,  # Disable scroll to zoom
     'doubleClick': 'reset',  # Double click to reset zoom
     'showTips': False,  # Reduce hover updates
     'frameMargins': 0,  # Reduce margin calculations
-    'modeBarButtonsToRemove': ['lasso2d','select', 'select2d', 'zoom2d', 'autoScale2d', 'zoomIn2d', 'zoomOut2d', 'zoom', 'resetScale2d'],
-    'modeBarButtonsToAdd': []  # No selection tools, just pan and download
+    'modeBarButtonsToRemove': ['lasso2d','select',  'autoScale2d','zoomIn','zoomOut'],
 }
 
 # Debounced scatter config - use this for callbacks that need debouncing
@@ -62,14 +58,13 @@ def optimize_scatter_performance(fig):
         # Reduce update frequency
         updatemenus=None,
         # Set pan as default drag mode
-        dragmode='pan',  # Ensure pan is always default
         # Smooth zoom transitions
         transition={
             'duration': 150,  # Faster transitions
             'easing': 'cubic-in-out'
         },
         # Reduce reflow calculations
-        autosize=True,
+        # autosize=True,
         # Optimize for large datasets
         hovermode='closest'  # Reduces hover calculations
     )

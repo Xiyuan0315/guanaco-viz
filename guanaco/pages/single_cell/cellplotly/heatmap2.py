@@ -23,28 +23,9 @@ def is_continuous_annotation(adata, annotation, threshold=50):
 def plot_unified_heatmap(
     adata, genes, groupby1, groupby2=None, labels=None, log=False, z_score=False, 
     boundary=False, color_map='Viridis', groupby1_label_color_map=None, 
-    groupby2_label_color_map=None, max_cells=50000, n_bins=10000, transformation=None
+    groupby2_label_color_map=None, max_cells=50000, n_bins=10000, transformation=None, adata_obs=None
 ):
-    """
-    Unified heatmap function that handles both single and dual annotation cases.
-    
-    Parameters:
-    - adata: AnnData object
-    - genes: List of genes to plot
-    - groupby1: Primary annotation column
-    - groupby2: Secondary annotation column (optional)
-    - labels: Selected labels for filtering (optional)
-    - log: Apply log transformation
-    - z_score: Apply z-score transformation
-    - boundary: Whether to draw boundary lines
-    - color_map: Colormap for the heatmap
-    - groupby1_label_color_map: Color map for primary annotation
-    - groupby2_label_color_map: Color map for secondary annotation
-    - max_cells: Maximum cells for binning
-    - n_bins: Number of bins for large datasets
-    - transformation: Transformation method (for heatmap1 compatibility)
-    """
-    
+
     # Handle parameter compatibility between old heatmap1 and heatmap2
     if transformation:
         if transformation == 'log':
@@ -156,23 +137,10 @@ def plot_unified_heatmap(
                     '#e377c2', '#f7b6d2', '#7f7f7f', '#c7c7c7', '#bcbd22', '#dbdb8d', 
                     '#17becf', '#9edae5']
     
-    # Get ALL unique labels from the original dataset (not just filtered ones)
-    # This ensures consistent color assignment regardless of filtering
-    all_unique_labels_primary = sorted(original_adata.obs[groupby1].unique())
-    
-    # Use the consistent color_config for primary annotation (same as other plots)
-    # Assign colors based on ALL labels to maintain consistency
-    default_color_map1 = {
-        label: color_config[i % len(color_config)] for i, label in enumerate(all_unique_labels_primary)
-    }
-    
-    # Use provided color maps or defaults
-    if groupby1_label_color_map:
-        # Use provided color map (it should already contain all labels)
-        color_map1 = groupby1_label_color_map
-    else:
-        # Use default colors when no custom color map provided
-        color_map1 = default_color_map1
+    # Set up colors - exactly like violin1.py approach
+    unique_labels_primary = sorted(adata_obs[groupby1].unique()) if adata_obs is not None else sorted(original_adata.obs[groupby1].unique())
+    if groupby1_label_color_map is None:
+        groupby1_label_color_map = {label: color_config[i % len(color_config)] for i, label in enumerate(unique_labels_primary)}
 
     # Setup for secondary annotation if present
     if has_secondary:
@@ -183,14 +151,10 @@ def plot_unified_heatmap(
         for item in label_list2:
             value_list2.append(sorted_heatmap_df[sorted_heatmap_df['combined'] == item].shape[0])
         
-        # Get ALL unique secondary labels from original dataset
-        all_unique_labels_secondary = sorted(original_adata.obs[groupby2].unique())
-        default_color_map2 = dict(zip(all_unique_labels_secondary, tab20_colors[:len(all_unique_labels_secondary)]))
-        
-        if groupby2_label_color_map:
-            color_map2 = groupby2_label_color_map
-        else:
-            color_map2 = default_color_map2
+        # Set up secondary colors - similar to violin1.py approach  
+        unique_labels_secondary = sorted(adata_obs[groupby2].unique()) if adata_obs is not None else sorted(original_adata.obs[groupby2].unique())
+        if groupby2_label_color_map is None:
+            groupby2_label_color_map = dict(zip(unique_labels_secondary, tab20_colors[:len(unique_labels_secondary)]))
 
     # Setup subplot configuration
     y_position = list(range(len(valid_genes)))
@@ -264,7 +228,7 @@ def plot_unified_heatmap(
     for i, label in enumerate(label_list1):
         fig.add_trace(go.Bar(
             x=[value_list1[i]],
-            marker_color=color_map1[label],
+            marker_color=groupby1_label_color_map[label],
             name=f"{label}",
             hovertemplate=f'<b>{label}</b><br>Count: {value_list1[i]}<extra></extra>',
             orientation='h',
@@ -283,7 +247,7 @@ def plot_unified_heatmap(
 
             fig.add_trace(go.Bar(
                 x=[value_list2[i]],
-                marker_color=color_map2[secondary_label],
+                marker_color=groupby2_label_color_map[secondary_label],
                 name=f"{secondary_label}",
                 hovertemplate=f'<b>{secondary_label}</b><br>Count: {value_list2[i]}<extra></extra>',
                 orientation='h',
@@ -312,7 +276,7 @@ def plot_unified_heatmap(
         legend_annotations.append(dict(
             x=legend_start_x, y=current_y,
             xref="paper", yref="paper",
-            text=f"<span style='color:{color_map1[label]}'>■</span> {label}",
+            text=f"<span style='color:{groupby1_label_color_map[label]}'>■</span> {label}",
             showarrow=False,
             font=dict(size=12),
             xanchor='left', yanchor='middle'
@@ -337,7 +301,7 @@ def plot_unified_heatmap(
             legend_annotations.append(dict(
                 x=legend_start_x, y=current_y,
                 xref="paper", yref="paper",
-                text=f"<span style='color:{color_map2[label]}'>■</span> {label}",
+                text=f"<span style='color:{groupby2_label_color_map[label]}'>■</span> {label}",
                 showarrow=False,
                 font=dict(size=12),
                 xanchor='left', yanchor='middle'
@@ -420,7 +384,7 @@ def plot_unified_heatmap(
 
 def plot_heatmap2_continuous(
     adata, genes, groupby1, continuous_key, labels=None, log=False, z_score=False, 
-    color_map='Viridis', groupby1_label_color_map=None, max_cells=50000, n_bins=10000
+    color_map='Viridis', groupby1_label_color_map=None, max_cells=50000, n_bins=10000, adata_obs=None
 ):
     is_backed = hasattr(adata, "isbacked") and adata.isbacked
     filtered_obs = adata.obs
@@ -485,23 +449,10 @@ def plot_heatmap2_continuous(
         )
     heatmap_gene_matrix = sorted_heatmap_df[valid_genes].values.T
 
-    # Get ALL unique labels from original dataset for consistent color assignment
-    # Use the original adata (before any filtering) to get all labels
-    all_unique_labels = sorted(adata.obs[groupby1].unique())
-    
-    # Import the consistent color config
-    from guanaco.data_loader import color_config
-    
-    # Create color map using ALL labels (not just filtered ones)
-    default_color_map1 = {
-        label: color_config[i % len(color_config)] for i, label in enumerate(all_unique_labels)
-    }
-    
-    # Use provided color map or default
-    if groupby1_label_color_map:
-        color_map1 = groupby1_label_color_map
-    else:
-        color_map1 = default_color_map1
+    # Set up colors - exactly like violin1.py approach
+    unique_labels = sorted(adata_obs[groupby1].unique()) if adata_obs is not None else sorted(adata.obs[groupby1].unique())
+    if groupby1_label_color_map is None:
+        groupby1_label_color_map = {label: color_config[i % len(color_config)] for i, label in enumerate(unique_labels)}
 
     heatmap_height = 40 * len(valid_genes)
     bar_chart_height = 30
@@ -561,8 +512,8 @@ def plot_heatmap2_continuous(
     n_categories = len(unique_categories)
     colorscale = []
     for i, cat in enumerate(unique_categories):
-        colorscale.append([i/n_categories, color_map1[cat]])
-        colorscale.append([(i+1)/n_categories, color_map1[cat]])
+        colorscale.append([i/n_categories, groupby1_label_color_map[cat]])
+        colorscale.append([(i+1)/n_categories, groupby1_label_color_map[cat]])
 
     fig.add_trace(go.Heatmap(
         z=category_values,
@@ -592,7 +543,7 @@ def plot_heatmap2_continuous(
         legend_annotations.append(dict(
             x=legend_start_x, y=y_pos,
             xref="paper", yref="paper",
-            text=f"<span style='color:{color_map1[label]}'>■</span> {label}",
+            text=f"<span style='color:{groupby1_label_color_map[label]}'>■</span> {label}",
             showarrow=False,
             font=dict(size=14),
             xanchor='left', yanchor='middle'

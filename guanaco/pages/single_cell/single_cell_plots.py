@@ -789,7 +789,7 @@ def plot_categorical_embedding_with_fixed_colors(
             bgcolor='rgba(0,0,0,0)',
             itemclick='toggle',
             itemdoubleclick='toggleothers',
-            font=dict(size=14)
+            font=dict(size=12)
         ) if not on_data else None,
         margin=dict(t=60, r=10, l=10, b=40)
     )
@@ -1300,7 +1300,6 @@ def single_cell_callbacks(app, adata, prefix):
         
         # Enable selection mode and set height to match CSS
         fig.update_layout(
-            dragmode='pan',  # Changed from 'select' to 'pan' as default
             height=450,
             margin=dict(t=60, b=40, l=40, r=40),  # Increased top margin for title space
             # Fix aspect ratio to prevent distortion
@@ -1858,7 +1857,8 @@ def single_cell_callbacks(app, adata, prefix):
             color_map=heatmap_color,
             groupby1_label_color_map=groupby1_label_color_map,
             groupby2_label_color_map=groupby2_label_color_map,
-            transformation=transformation  # For compatibility
+            transformation=transformation, # For compatibility
+            adata_obs=adata.obs,  # Pass original observations for consistent color mapping
         )
     
     # Add store for violin plot cache
