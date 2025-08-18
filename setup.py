@@ -40,7 +40,7 @@ setup(
         "Topic :: Scientific/Engineering :: Visualization",
     ],
 
-    python_requires=">=3.8",
+    python_requires=">=3.10",
 
     install_requires=[
         "dash==2.18.0",
@@ -49,8 +49,7 @@ setup(
         "dash-draggable",
         "dash-ag-grid",
         "plotly>=5.19.0,<6.0.0",
-        "pandas==2.1.1",
-        "numpy==1.26.0",
+        "pandas>=2.0.0",
         "scipy>=1.9.0",
         "statsmodels==0.14.4",
         "anndata",

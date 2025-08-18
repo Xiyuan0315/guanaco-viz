@@ -90,7 +90,16 @@ def update_anndata_layout(selected_modality, active_tab):
     adata = dataset.adata.mod[selected_modality] if isinstance(dataset.adata, mu.MuData) else dataset.adata
     label_list = get_discrete_labels(adata)
     prefix = f"{active_tab}-{selected_modality}" if isinstance(dataset.adata, mu.MuData) else active_tab
-    return anndata_layout(adata, dataset.gene_markers or [], label_list, prefix)
+    
+    # Use JSON markers for RNA, automatic markers for other modalities
+    if selected_modality == 'rna' and dataset.gene_markers is not None:
+        # Use markers from JSON config for RNA
+        modality_markers = dataset.gene_markers
+    else:
+        # Use first 6 variables from the modality-specific adata
+        modality_markers = adata.var_names[:6].tolist() if adata else []
+    
+    return anndata_layout(adata, modality_markers, label_list, prefix)
 
 @app.callback(
     [Output("tip-modal", "is_open"), Output("tip-store", "data")],

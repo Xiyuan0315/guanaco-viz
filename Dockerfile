@@ -38,4 +38,4 @@ RUN echo '{"datasets": {}}' > /app/config.json
 EXPOSE 8080
 
 # Use gunicorn for production
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "2", "--timeout", "300", "guanaco.wsgi:application"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "2", "--timeout", "300", "guanaco.main:server"]

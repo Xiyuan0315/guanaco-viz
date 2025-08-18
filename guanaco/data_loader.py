@@ -46,7 +46,7 @@ class DatasetBundle:
         self.title = title
         self.description = description
         self._adata = adata
-        self.gene_markers = gene_markers
+        self.gene_markers = gene_markers  # Only for RNA, other modalities get first 10 dynamically
         self.label_list = label_list
         self.genome_tracks = genome_tracks
         self.ref_track = ref_track
@@ -65,8 +65,8 @@ class DatasetBundle:
             backed = self.backed_mode if self.backed_mode else False
             self._adata = load_adata(self.adata_path, max_cells=max_cells, seed=seed, backed=backed)
             # Update gene markers and labels after loading
-            if self.gene_markers is None:
-                self.gene_markers = self._adata.var_names[:6].tolist()
+            # if self.gene_markers is None:
+            #     self.gene_markers = self._adata.var_names[:6].tolist()
             if self.label_list is None:
                 self.label_list = get_discrete_labels(self._adata)
         return self._adata
@@ -165,6 +165,59 @@ def load_adata(
 def get_discrete_labels(adata: ad.AnnData, *, max_unique: int = 50) -> list[str]:
     nunique = adata.obs.nunique()
     return nunique[nunique < max_unique].sort_values().index.tolist()
+
+def get_modality_variables(adata: ad.AnnData | None, modality: str = 'RNA', n_vars: int = 10) -> list[str]:
+    """
+    Get the first n variables for a specific modality.
+    
+    Parameters:
+    -----------
+    adata : AnnData
+        The annotated data object
+    modality : str
+        The modality to get variables for ('RNA', 'Protein', etc.)
+    n_vars : int
+        Number of variables to return (default: 10)
+        
+    Returns:
+    --------
+    list : List of variable names for the modality
+    """
+    if adata is None:
+        return []
+    
+    if modality == 'RNA' or modality is None:
+        # RNA modality - use var_names
+        return adata.var_names[:n_vars].tolist() if hasattr(adata, 'var_names') else []
+    
+    elif modality == 'Protein' and 'protein' in adata.obsm:
+        # Protein modality - check for feature names in uns
+        if 'protein' in adata.uns:
+            if 'features' in adata.uns['protein']:
+                return adata.uns['protein']['features'][:n_vars].tolist()
+            elif 'var_names' in adata.uns['protein']:
+                return adata.uns['protein']['var_names'][:n_vars].tolist()
+        # Generate generic protein names if no names found
+        n_proteins = adata.obsm['protein'].shape[1]
+        return [f'Protein_{i+1}' for i in range(min(n_vars, n_proteins))]
+    
+    elif modality in adata.layers:
+        # Layer modality - use the same var_names as RNA
+        return adata.var_names[:n_vars].tolist() if hasattr(adata, 'var_names') else []
+    
+    else:
+        # Check obsm for other modalities (like ATAC)
+        for key in adata.obsm.keys():
+            if key.lower() == modality.lower() or (modality == 'ATAC' and key.lower() in ['atac', 'peaks', 'chromatin']):
+                # Try to find feature names in uns
+                if key in adata.uns and 'features' in adata.uns[key]:
+                    return adata.uns[key]['features'][:n_vars].tolist()
+                # Generate generic names
+                n_features = adata.obsm[key].shape[1]
+                return [f'{modality}_{i+1}' for i in range(min(n_vars, n_features))]
+        
+        # Fallback to RNA
+        return adata.var_names[:n_vars].tolist() if hasattr(adata, 'var_names') else []
 
 # ----------------------------------------------------------------------------
 # S3 genome tracks
@@ -354,8 +407,8 @@ def initialize_data(
                 label_list = None
             else:
                 adata = load_adata(adata_file, max_cells=max_cells, seed=seed, base_dir=base_dir, backed=backed_mode)
-                # Use provided markers or default to first 6 genes
-                gene_markers = dataset_cfg.get("markers", adata.var_names[:6].tolist() if adata else None)
+                # Use provided markers or default to first 6 genes for RNA only
+                gene_markers = dataset_cfg.get("markers", None)
                 label_list = get_discrete_labels(adata) if adata else None
 
 
