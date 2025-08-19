@@ -53,7 +53,7 @@ footprint = html.Div(
 guanaco_footer = html.Footer(
     html.Div([
         "This webpage was made using ",
-        html.A("GUANACO", href="https://github.com/Systems-Immunometabolism-Lab/GUANACO_updated", target="_blank"),
+        html.A("GUANACO", href="https://github.com/Systems-Immunometabolism-Lab/guanaco-viz", target="_blank"),
         "."
     ],
     style={
