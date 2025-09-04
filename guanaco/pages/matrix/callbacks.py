@@ -8,14 +8,14 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
-from guanaco.pages.single_cell.cellplotly.embedding import plot_continuous_embedding, plot_coexpression_embedding,plot_categorical_embedding_with_fixed_colors,plot_continuous_annotation
-from guanaco.pages.single_cell.cellplotly.heatmap import plot_unified_heatmap
-from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
-from guanaco.pages.single_cell.cellplotly.violin2 import plot_violin2_new
-from guanaco.pages.single_cell.cellplotly.stacked_bar import plot_stacked_bar
-from guanaco.pages.single_cell.cellplotly.dotmatrix import plot_dot_matrix
-from guanaco.pages.single_cell.cellplotly.pseudotime import plot_genes_in_pseudotime
-from guanaco.pages.single_cell.plot_layout import generate_heatmap_layout,generate_violin_layout,generate_dotplot_layout,generate_stacked_bar_layout,generate_pseudotime_layout
+from guanaco.pages.matrix.cellplotly.embedding import plot_continuous_embedding, plot_coexpression_embedding,plot_categorical_embedding_with_fixed_colors,plot_continuous_annotation
+from guanaco.pages.matrix.cellplotly.heatmap import plot_unified_heatmap
+from guanaco.pages.matrix.cellplotly.violin1 import plot_violin1
+from guanaco.pages.matrix.cellplotly.violin2 import plot_violin2_new
+from guanaco.pages.matrix.cellplotly.stacked_bar import plot_stacked_bar
+from guanaco.pages.matrix.cellplotly.dotmatrix import plot_dot_matrix
+from guanaco.pages.matrix.cellplotly.pseudotime import plot_genes_in_pseudotime
+from guanaco.pages.matrix.layout import generate_heatmap_layout,generate_violin_layout,generate_dotplot_layout,generate_stacked_bar_layout,generate_pseudotime_layout
 # Import configs
 from guanaco.config import scatter_config, gene_scatter_config
 from guanaco.data_loader import color_config
@@ -216,7 +216,7 @@ def create_global_metadata_filter(adata, prefix):
 
 
 
-def scatter_layout(adata,prefix):
+def generate_embedding_plots(adata,prefix):
 
     scatter_transformation_selection = html.Div([
         dbc.RadioItems(
@@ -651,7 +651,7 @@ def generate_left_control(default_gene_markers, label_list, prefix):
     ])
 
 
-def generate_single_cell_tabs(adata, default_gene_markers, discrete_label_list, prefix):
+def generate_other_plots(adata, default_gene_markers, discrete_label_list, prefix):
 
     tabs = dcc.Tabs([
         dcc.Tab(label='Heatmap', value='heatmap-tab', children=[
@@ -696,7 +696,7 @@ def is_continuous_annotation(adata, annotation, threshold=50):
 
 # ============= Main Callback Functions =============
 
-def single_cell_callbacks(app, adata, prefix):
+def matrix_callbacks(app, adata, prefix):
     """Combined callback registration for both scatter and other plots"""
     
     # ===== Global Filter Callbacks =====
@@ -1234,7 +1234,7 @@ def single_cell_callbacks(app, adata, prefix):
         
         # Calculate ranges for gene1
         if gene1 and gene1 in plot_adata.var_names:
-            from guanaco.pages.single_cell.cellplotly.gene_extraction_utils import extract_gene_expression, apply_transformation
+            from guanaco.pages.matrix.cellplotly.gene_extraction_utils import extract_gene_expression, apply_transformation
             gene1_expr = extract_gene_expression(plot_adata, gene1)
             
             # Apply transformation if specified
@@ -1254,7 +1254,7 @@ def single_cell_callbacks(app, adata, prefix):
         
         # Calculate ranges for gene2
         if gene2 and gene2 in plot_adata.var_names:
-            from guanaco.pages.single_cell.cellplotly.gene_extraction_utils import extract_gene_expression, apply_transformation
+            from guanaco.pages.matrix.cellplotly.gene_extraction_utils import extract_gene_expression, apply_transformation
             gene2_expr = extract_gene_expression(plot_adata, gene2)
             
             # Apply transformation if specified

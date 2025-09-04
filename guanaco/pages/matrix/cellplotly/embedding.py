@@ -154,7 +154,7 @@ def plot_categorical_embedding_with_fixed_colors(
     
     # Only extract gene expression if gene is provided
     if gene is not None and gene in adata.var_names:
-        from guanaco.pages.single_cell.cellplotly.gene_extraction_utils import extract_gene_expression
+        from guanaco.pages.matrix.cellplotly.gene_extraction_utils import extract_gene_expression
         df[gene] = extract_gene_expression(adata, gene)
 
     # Get unique labels in the filtered data

@@ -1,7 +1,7 @@
 from pyjaspar import jaspardb
 import dash_bio as dashbio
 from dash import dcc, html,Input, Output, State
-from guanaco.pages.browser.utils import plot_motif
+from guanaco.pages.track.utils import plot_motif
 
 def gene_browser_callbacks(app, genome_tracks, ref_track, prefix):
     """

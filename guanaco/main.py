@@ -4,8 +4,8 @@ from guanaco.layout import (
     navbar, tab_content, footprint, guanaco_footer, description_layout,
     anndata_layout, igv_layout, resize_tip_toast  # make sure this is imported
 )
-from guanaco.pages.browser.gene_browser import gene_browser_callbacks
-from guanaco.pages.single_cell.single_cell_plots import single_cell_callbacks
+from guanaco.pages.track.gene_browser import gene_browser_callbacks
+from guanaco.pages.matrix.callbacks import matrix_callbacks
 from guanaco.data_loader import datasets  # Already loaded at module level in data_loader.py
 import muon as mu
 import anndata as ad
@@ -35,10 +35,10 @@ for name, dataset in datasets.items():
             for mod in dataset.adata.mod.keys():
                 mod_adata = dataset.adata.mod[mod]
                 prefix = f"{name}-{mod}"
-                single_cell_callbacks(app, mod_adata, prefix)
+                matrix_callbacks(app, mod_adata, prefix)
         else:
             prefix = name
-            single_cell_callbacks(app, dataset.adata, prefix)
+            matrix_callbacks(app, dataset.adata, prefix)
 
     if dataset.genome_tracks is not None and dataset.ref_track is not None:
         gene_browser_callbacks(app, dataset.genome_tracks, dataset.ref_track, dataset.title)

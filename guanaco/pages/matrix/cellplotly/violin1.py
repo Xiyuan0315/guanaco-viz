@@ -4,7 +4,7 @@ from plotly.subplots import make_subplots
 import numpy as np
 import pandas as pd
 from guanaco.data_loader import color_config
-from guanaco.pages.single_cell.cellplotly.gene_extraction_utils import (
+from guanaco.pages.matrix.cellplotly.gene_extraction_utils import (
     extract_gene_expression, extract_multiple_genes, apply_transformation
 )
 import hashlib

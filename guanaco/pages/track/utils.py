@@ -6,8 +6,6 @@ import pandas as pd
 import numpy as np
 import warnings
 
-
-
 plt.switch_backend('Agg')
 def plot_motif(motif):
     motif_info = [

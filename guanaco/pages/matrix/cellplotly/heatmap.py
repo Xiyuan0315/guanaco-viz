@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from guanaco.pages.single_cell.cellplotly.gene_extraction_utils import (
+from guanaco.pages.matrix.cellplotly.gene_extraction_utils import (
     extract_gene_expression, extract_multiple_genes, apply_transformation, bin_cells_for_heatmap
 )
 
