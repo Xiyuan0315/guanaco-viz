@@ -19,9 +19,6 @@ def plot_dot_matrix(adata, genes, groupby, selected_labels, aggregation='mean', 
     # Initialize results dictionaries
     aggregated_results = {}
     fraction_results = {}
-    
-    # First, extract all genes from the original adata to leverage caching
-    # This is much more efficient for backed mode as each gene is read only once
     gene_expressions = {}
     for gene in valid_genes:
         # Extract from original adata (not views) to ensure cache hits
@@ -36,28 +33,15 @@ def plot_dot_matrix(adata, genes, groupby, selected_labels, aggregation='mean', 
         if len(group_indices) == 0:
             continue
             
-        # Extract expression data for this group only
         group_expression_list = []
         
         for gene in valid_genes:
-            # Use cached gene expression and slice for this group
             gene_expr = gene_expressions[gene][group_indices]
             
-            # Apply transformation if needed
             if transformation:
                 gene_expr = apply_transformation(gene_expr, transformation, copy=False)
+            agg_value = np.mean(gene_expr)
             
-            # Calculate aggregated value
-            if aggregation == 'mean':
-                agg_value = np.mean(gene_expr)
-            elif aggregation == 'median':
-                agg_value = np.median(gene_expr)
-            elif aggregation == 'sum':
-                agg_value = np.sum(gene_expr)
-            else:
-                agg_value = np.mean(gene_expr)
-            
-            # Calculate fraction expressing
             fraction = np.mean(gene_expr > expression_threshold)
             
             group_expression_list.append({
@@ -83,7 +67,6 @@ def plot_dot_matrix(adata, genes, groupby, selected_labels, aggregation='mean', 
         aggregated_data = (aggregated_data.sub(aggregated_data.mean(axis=1), axis=0)
                                         .div(aggregated_data.std(axis=1), axis=0))
     
-    # Use actual groups present in the data after filtering
     if selected_labels:
         # Keep the order of selected_labels but only include those actually present
         groups = [label for label in reversed(selected_labels) if label in aggregated_data.index]
@@ -186,16 +169,19 @@ def plot_dot_matrix(adata, genes, groupby, selected_labels, aggregation='mean', 
             zmid=None,
             zmin=vmin,
             zmax=vmax,
+            colorbar=dict(
+                    title=f'{aggregation.capitalize()} Expression ({transformation})' if transformation and transformation != 'None' else f'{aggregation.capitalize()} Expression',
+                    tickfont=dict(color='DarkSlateGrey', size=10),
+                    len=0.5,
+                    yanchor="bottom",
+                    y=0
+                ),
             hovertemplate='%{y}<br>%{x}<br>Expression: %{z:.2f}<extra></extra>'
         ))
 
         fig.update_layout(
-            xaxis=dict(title='Gene', tickangle=45),
-            yaxis=dict(title=groupby),
             plot_bgcolor='white',
             paper_bgcolor='white',
-            height=max(300, 30 * len(groups)),
-            width=max(400, 60 * len(valid_genes)),
             margin=dict(b=100, l=100, t=50, r=50)
         )
 

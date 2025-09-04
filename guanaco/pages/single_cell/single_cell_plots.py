@@ -9,30 +9,23 @@ import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 from guanaco.pages.single_cell.cellplotly.embedding import plot_continuous_embedding, plot_coexpression_embedding,plot_categorical_embedding_with_fixed_colors,plot_continuous_annotation
-from guanaco.pages.single_cell.cellplotly.heatmap2 import plot_unified_heatmap
+from guanaco.pages.single_cell.cellplotly.heatmap import plot_unified_heatmap
 from guanaco.pages.single_cell.cellplotly.violin1 import plot_violin1
-from guanaco.pages.single_cell.cellplotly.violin2_new import plot_violin2_new
+from guanaco.pages.single_cell.cellplotly.violin2 import plot_violin2_new
 from guanaco.pages.single_cell.cellplotly.stacked_bar import plot_stacked_bar
-from guanaco.pages.single_cell.cellplotly.dotmatrix_optimized import plot_dot_matrix
+from guanaco.pages.single_cell.cellplotly.dotmatrix import plot_dot_matrix
 from guanaco.pages.single_cell.cellplotly.pseudotime import plot_genes_in_pseudotime
-
-from guanaco.pages.single_cell.mod021_heatmap import generate_heatmap_layout
-from guanaco.pages.single_cell.mod022_violin import generate_violin_layout
-from guanaco.pages.single_cell.mod023_dotplot import generate_dotplot_layout
-from guanaco.pages.single_cell.mod024_stacked_bar import generate_stacked_bar_layout
-from guanaco.pages.single_cell.mod025_pseudotime import generate_pseudotime_layout
-
+from guanaco.pages.single_cell.plot_layout import generate_heatmap_layout,generate_violin_layout,generate_dotplot_layout,generate_stacked_bar_layout,generate_pseudotime_layout
 # Import configs
 from guanaco.config import scatter_config, gene_scatter_config
 from guanaco.data_loader import color_config
 warnings.filterwarnings('ignore', message='.*observed=False.*')
 
-# Load color palettes
+# helper functions
 cvd_color_path = Path(__file__).parent / "cvd_color.json"
 with open(cvd_color_path, "r") as f:
     palette_json = json.load(f)
 palette_names = list(palette_json["color_palettes"].keys())
-
 
 def apply_relayout(fig, relayout):
     if not relayout:
@@ -665,7 +658,7 @@ def generate_single_cell_tabs(adata, default_gene_markers, discrete_label_list, 
             html.Div(generate_heatmap_layout(adata, prefix))
         ]),
         dcc.Tab(label='Violin Plot', value='violin-tab', children=[
-            html.Div(generate_violin_layout(adata, default_gene_markers, discrete_label_list, prefix))
+            html.Div(generate_violin_layout(default_gene_markers, discrete_label_list, prefix))
         ]),
         dcc.Tab(label='Dotplot', value='dotplot-tab', children=[
             html.Div(generate_dotplot_layout(prefix))
@@ -1288,7 +1281,7 @@ def single_cell_callbacks(app, adata, prefix):
         [Input(f'{prefix}-update-plots-button', 'n_clicks')],
         [State(f'{prefix}-annotation-scatter', 'selectedData'),
          State(f'{prefix}-annotation-dropdown', 'value'),
-         State(f'{prefix}-global-filtered-data', 'data')],  # Add global filtered data
+         State(f'{prefix}-global-filtered-data', 'data')], 
         prevent_initial_call=True
     )
     def store_selected_cells(n_clicks, selected_data, current_annotation, filtered_data):
@@ -1296,7 +1289,6 @@ def single_cell_callbacks(app, adata, prefix):
         if n_clicks == 0:
             return None, ""
         
-        # Get the same filtered data that the scatter plot is using
         if (filtered_data and 
             filtered_data.get('cell_indices') is not None and 
             filtered_data.get('n_cells', adata.n_obs) < adata.n_obs):
@@ -1304,7 +1296,6 @@ def single_cell_callbacks(app, adata, prefix):
         else:
             plot_adata = adata
         
-        # If no selection made, return all cells from the scatter plot
         if not selected_data or not selected_data.get('points'):
             all_indices = plot_adata.obs.index.tolist()
             n_cells = len(all_indices)
@@ -1316,21 +1307,14 @@ def single_cell_callbacks(app, adata, prefix):
             )
             return all_indices, status_msg
         
-        # Extract cell indices from selected points
         selected_points = selected_data['points']
-        
-        # Get the actual cell indices
         selected_indices = []
         
-        # Check if this is continuous data (including genes) or categorical data
         if current_annotation in adata.var_names or is_continuous_annotation(plot_adata, current_annotation):
-            # For continuous data and genes - use customdata for cell indices
             for point in selected_points:
                 if 'customdata' in point:
                     customdata = point['customdata']
-                    # Handle both single values and arrays
                     if isinstance(customdata, (list, tuple)) and len(customdata) > 1:
-                        # The second element in customdata is the cell index (for genes with annotation data)
                         cell_idx = int(customdata[1])
                     else:
                         # Single value customdata contains the cell index directly
@@ -1341,12 +1325,9 @@ def single_cell_callbacks(app, adata, prefix):
                     point_number = point.get('pointNumber', 0)
                     selected_indices.append(plot_adata.obs.index[point_number])
         else:
-            # For categorical data - use customdata with category names to find cells
             for point in selected_points:
                 curve_number = point.get('curveNumber', 0)
                 point_number = point.get('pointNumber', 0)
-                
-                # Skip the background trace (curve_number 0 is the grey background)
                 if curve_number == 0:
                     continue
                 
@@ -1391,7 +1372,6 @@ def single_cell_callbacks(app, adata, prefix):
         else:
             return None, ""
     
-    # Enable/disable download menu based on selected cells
     @app.callback(
         Output(f'{prefix}-download-menu', 'disabled'),
         [Input(f'{prefix}-selected-cells-store', 'data')]
@@ -1400,7 +1380,6 @@ def single_cell_callbacks(app, adata, prefix):
         """Enable download menu when cells are selected"""
         return not bool(selected_cells)
     
-    # Handle cell data download
     @app.callback(
         Output(f'{prefix}-download-cells-data', 'data'),
         [Input(f'{prefix}-download-cellids', 'n_clicks'),
@@ -1418,33 +1397,26 @@ def single_cell_callbacks(app, adata, prefix):
         button_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
         if f'{prefix}-download-cellids' in button_id:
-            # Download cell IDs as text file
             content = "\n".join(selected_cells)
             return dict(
                 content=content,
                 filename="selected_cells.txt"
             )
         elif f'{prefix}-download-adata' in button_id:
-            # Download subset AnnData as h5ad
             import tempfile
             import os
             
-            # Create subset AnnData
             subset_adata = adata[selected_cells].copy()
             
-            # Save to temporary file
             with tempfile.NamedTemporaryFile(suffix='.h5ad', delete=False) as tmp:
                 subset_adata.write_h5ad(tmp.name)
                 tmp_path = tmp.name
             
-            # Read the file content
             with open(tmp_path, 'rb') as f:
                 content = f.read()
             
-            # Clean up temp file
             os.unlink(tmp_path)
             
-            # Return as downloadable h5ad file
             import base64
             return dict(
                 content=base64.b64encode(content).decode(),
@@ -1526,11 +1498,8 @@ def single_cell_callbacks(app, adata, prefix):
             # Return the current figure if it exists, otherwise return empty
             return current_figure if current_figure else go.Figure()
         
-        # When cells are selected, selected_labels will be auto-updated to match
         filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
         
-        # Create color maps for both primary and secondary annotations
-        # Primary annotation color map (let unified function handle defaults)
         groupby1_label_color_map = None
         if discrete_color_map:
             discrete_palette = palette_json["color_palettes"][discrete_color_map]
@@ -1538,8 +1507,6 @@ def single_cell_callbacks(app, adata, prefix):
             groupby1_label_color_map = {
                 label: discrete_palette[i % len(discrete_palette)] for i, label in enumerate(unique_labels1)
             }
-        
-        # Secondary annotation color map
         groupby2_label_color_map = None
         if secondary_annotation and secondary_annotation != 'None' and secondary_annotation != selected_annotation:
             unique_labels2 = sorted(adata.obs[secondary_annotation].unique())
@@ -1548,8 +1515,6 @@ def single_cell_callbacks(app, adata, prefix):
                 groupby2_label_color_map = {
                     label: secondary_palette[i % len(secondary_palette)] for i, label in enumerate(unique_labels2)
                 }
-        
-        # Use unified heatmap function for all cases
         return plot_unified_heatmap(
             adata=filtered_adata,
             genes=selected_genes,
@@ -1582,18 +1547,14 @@ def single_cell_callbacks(app, adata, prefix):
     def update_violin_cache(selected_genes, selected_annotation, selected_labels,
                            transformation, show_box_plot, show_scatter1, discrete_color_map, 
                            selected_cells, current_cache):
-        # Create cache key for current parameters
         cache_key = f"{selected_genes}_{selected_annotation}_{selected_labels}_{transformation}_{show_box_plot}_{show_scatter1}_{discrete_color_map}_{selected_cells}"
         
-        # Initialize cache if needed
         if current_cache is None:
             current_cache = {}
         
-        # Return existing cache if parameters haven't changed
         if 'current_key' in current_cache and current_cache['current_key'] == cache_key:
             return current_cache
         
-        # Use discrete color map if selected, otherwise use default
         color_map = None
         if discrete_color_map:
             discrete_palette = palette_json["color_palettes"][discrete_color_map]
@@ -1602,10 +1563,8 @@ def single_cell_callbacks(app, adata, prefix):
                 label: discrete_palette[i % len(discrete_palette)] for i, label in enumerate(unique_labels)
             }
         
-        # When cells are selected, selected_labels will be auto-updated to match
         filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
         
-        # Generate plot with optimized caching
         fig = plot_violin1(
             filtered_adata,
             selected_genes,
@@ -1618,7 +1577,6 @@ def single_cell_callbacks(app, adata, prefix):
             adata_obs=adata.obs  # Pass original observations for consistent color mapping
         )
         
-        # Update layout for violin plot
         num_genes = len(selected_genes) if selected_genes else 0
         num_categories = len(selected_labels) if selected_labels else 0
         fig.update_layout(
@@ -1627,10 +1585,8 @@ def single_cell_callbacks(app, adata, prefix):
             margin=dict(l=130, r=10, t=30, b=30)
         )
         
-        # Store in cache (limit cache size to prevent memory issues)
-        if len(current_cache) > 10:  # Keep only last 10 plots
-            # Remove oldest entries
-            keys_to_remove = list(current_cache.keys())[:-9]  # Keep last 9 + current
+        if len(current_cache) > 10:  
+            keys_to_remove = list(current_cache.keys())[:-9]  
             for key in keys_to_remove:
                 if key != 'current_key':
                     current_cache.pop(key, None)
@@ -1640,7 +1596,6 @@ def single_cell_callbacks(app, adata, prefix):
         
         return current_cache
 
-    # Optimized callback for violin plot display with tab persistence
     @app.callback(
         Output(f'{prefix}-violin-plot1', 'figure'),
         [Input(f'{prefix}-violin-plot-cache-store', 'data'),
@@ -1648,20 +1603,16 @@ def single_cell_callbacks(app, adata, prefix):
         [State(f'{prefix}-violin-plot1', 'figure')]
     )
     def display_violin1(cache_data, active_tab, current_figure):
-        # Tab persistence: only update if this tab is active or if we don't have a figure
         if active_tab != 'violin-tab':
             return current_figure if current_figure else go.Figure()
         
-        # Return cached figure if available
         if cache_data and 'current_key' in cache_data:
             current_key = cache_data['current_key']
             if current_key in cache_data:
                 return go.Figure(cache_data[current_key])
         
-        # Fallback to current figure or empty figure
         return current_figure if current_figure else go.Figure()
     
-    # New callback for mode explanation
     @app.callback(
         Output(f'{prefix}-mode-explanation', 'children'),
         Input(f'{prefix}-mode-selection', 'value')
@@ -1689,7 +1640,6 @@ def single_cell_callbacks(app, adata, prefix):
         ]
         
         if mode == 'mode1':
-            # Count meta1 levels
             n_levels = len(adata.obs[meta1].unique()) if meta1 else 0
             if n_levels == 2:
                 options = base_options + [
@@ -1703,7 +1653,6 @@ def single_cell_callbacks(app, adata, prefix):
                 ]
         
         elif mode == 'mode2':
-            # Count meta2 levels
             if meta2 and meta2 != 'none':
                 n_levels = len(adata.obs[meta2].unique())
                 if n_levels == 2:
@@ -1750,9 +1699,9 @@ def single_cell_callbacks(app, adata, prefix):
     def toggle_meta2_dropdown(mode):
         """Disable meta2 dropdown when mode1 is selected."""
         if mode == 'mode1':
-            return True, 'none'  # Disable dropdown and set value to 'none'
+            return True, 'none' 
         else:
-            return False, dash.no_update  # Enable dropdown, keep current value
+            return False, dash.no_update  
     
     @app.callback(
         Output(f'{prefix}-violin-plot2', 'figure'),
@@ -1778,13 +1727,11 @@ def single_cell_callbacks(app, adata, prefix):
             else:
                 filtered_adata = adata
         
-        # Handle meta2 for mode1
         if mode == 'mode1':
             meta2 = None
         elif meta2 == 'none':
             meta2 = None
             
-        # Prevent update when obs2 is None and analysis mode requires obs2 (mode2-4)
         if mode in ['mode2', 'mode3', 'mode4'] and meta2 is None:
             raise PreventUpdate
             
@@ -1820,9 +1767,7 @@ def single_cell_callbacks(app, adata, prefix):
         # Lazy loading: only update if this tab is active
         if active_tab != 'dotplot-tab':
             return current_figure if current_figure else go.Figure()
-        
-        # For large datasets or backed AnnData, pass the original adata directly
-        # The plot_dot_matrix function will handle filtering more efficiently
+
         if adata.n_obs > 10000 or (hasattr(adata, 'isbacked') and adata.isbacked):
             # Pass original adata - the optimized function will handle filtering internally
             return plot_dot_matrix(
@@ -1850,7 +1795,6 @@ def single_cell_callbacks(app, adata, prefix):
                 plot_type=plot_type
             )
     
-    # Callback to populate x-axis groups draggable grid based on x-axis metadata selection
     @app.callback(
         [Output(f'{prefix}-x-axis-draggable-grid', 'children'),
          Output(f'{prefix}-x-axis-groups-state', 'data')],
@@ -1864,11 +1808,8 @@ def single_cell_callbacks(app, adata, prefix):
         if active_tab != 'stacked-bar-tab' or not x_meta:
             return [], {}
         
-        # Get unique values from the selected x-axis metadata column
         x_values = sorted(adata.obs[x_meta].unique())
-        
-        # If selected_labels are provided and we want to filter by them
-        # Only filter when x_meta matches the left control annotation
+
         if selected_labels and len(selected_labels) < len(x_values):
             # Check if selected labels are a subset of x_values
             if set(selected_labels).issubset(set(x_values)):
@@ -1924,7 +1865,6 @@ def single_cell_callbacks(app, adata, prefix):
         
         return items, new_state
     
-    # Callback to handle toggle switches
     @app.callback(
         Output(f'{prefix}-x-axis-groups-state', 'data', allow_duplicate=True),
         [Input({'type': f'{prefix}-x-group-switch', 'index': ALL}, 'value')],
@@ -1956,8 +1896,6 @@ def single_cell_callbacks(app, adata, prefix):
         if active_tab != 'stacked-bar-tab' or not x_axis_meta:
             return [], []
         
-        # Get unique values for the selected x-axis metadata
-        # Use filtered data if cells are selected
         if selected_cells:
             filtered_adata = adata[selected_cells]
             x_values = sorted(filtered_adata.obs[x_axis_meta].unique())
@@ -2182,7 +2120,6 @@ def single_cell_callbacks(app, adata, prefix):
             color_map=color_map
         )
     
-    # Callback to populate pseudotime key dropdown
     @app.callback(
         [Output(f'{prefix}-pseudotime-key-dropdown', 'options'),
          Output(f'{prefix}-pseudotime-key-dropdown', 'value')],
@@ -2190,15 +2127,11 @@ def single_cell_callbacks(app, adata, prefix):
     )
     def update_pseudotime_key_options(active_tab):
         if active_tab == 'pseudotime-tab':
-            # Find all numeric columns that could be pseudotime
             numeric_cols = []
             for col in adata.obs.columns:
                 if adata.obs[col].dtype in ['float32', 'float64', 'int32', 'int64']:
-                    # Check if it could be pseudotime (continuous, reasonable range)
                     if adata.obs[col].nunique() > 50:
                         numeric_cols.append(col)
-            
-            # Prioritize columns with 'pseudotime' in the name
             pseudotime_cols = [col for col in numeric_cols if 'pseudotime' in col.lower() or 'dpt' in col.lower()]
             other_cols = [col for col in numeric_cols if col not in pseudotime_cols]
             
