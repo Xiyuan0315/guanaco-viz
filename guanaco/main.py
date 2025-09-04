@@ -12,22 +12,11 @@ import anndata as ad
 
 mu.set_options(pull_on_update=False)
 
-# Note: datasets is already loaded when data_loader.py was imported
-# No need to call initialize_data() again!
-
 # Utility function
 def get_discrete_labels(adata: ad.AnnData, *, max_unique: int = 50) -> list[str]:
     nunique = adata.obs.nunique()
     return nunique[nunique < max_unique].sort_values().index.tolist()
 
-# App layout
-# app.layout = html.Div([
-#     dcc.Location(id='url', refresh=False),
-#     navbar(datasets),
-#     html.Div(id="tabs-content", style={"paddingTop": "70px"}),
-#     footprint,
-#     guanaco_footer
-# ])
 app.layout = html.Div([
     dcc.Location(id="url", refresh=False),
     dcc.Store(id="tip-store", storage_type="session", data={"shown": False}),
@@ -37,7 +26,6 @@ app.layout = html.Div([
     footprint,
     guanaco_footer,
 ])
-
 
 # Register callbacks for scatter and other plots for each dataset
 for name, dataset in datasets.items():
@@ -52,11 +40,10 @@ for name, dataset in datasets.items():
             prefix = name
             single_cell_callbacks(app, dataset.adata, prefix)
 
-    # Register genome browser callbacks if genome tracks exist
     if dataset.genome_tracks is not None and dataset.ref_track is not None:
         gene_browser_callbacks(app, dataset.genome_tracks, dataset.ref_track, dataset.title)
 
-# Update main content when dataset tab changes
+
 @app.callback(
     Output("tabs-content", "children"),
     Input("tabs-dataset", "active_tab")
@@ -91,12 +78,9 @@ def update_anndata_layout(selected_modality, active_tab):
     label_list = get_discrete_labels(adata)
     prefix = f"{active_tab}-{selected_modality}" if isinstance(dataset.adata, mu.MuData) else active_tab
     
-    # Use JSON markers for RNA, automatic markers for other modalities
     if selected_modality == 'rna' and dataset.gene_markers is not None:
-        # Use markers from JSON config for RNA
         modality_markers = dataset.gene_markers
     else:
-        # Use first 6 variables from the modality-specific adata
         modality_markers = adata.var_names[:6].tolist() if adata else []
     
     return anndata_layout(adata, modality_markers, label_list, prefix)
@@ -118,8 +102,6 @@ def toggle_tip(pathname, n_clicks, is_open, store):
 
     return False, store
 
-
-# Update IGV layout when dataset changes
 @app.callback(
     Output({"type": "igv-layout-div", "index": MATCH}, "children"),
     Input("tabs-dataset", "active_tab")
