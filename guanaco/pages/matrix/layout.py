@@ -336,8 +336,6 @@ def generate_violin_layout(default_gene_markers,discrete_label_list,prefix):
                             height=30,
                             gridCols=12,
                             style={
-                                "min-width": "300px",   # optional: prevents collapse
-                                "min-height": "300px",  # optional: ensures initial size
                                 "background": "transparent",
                                 "padding": "0px"
                             }
@@ -521,7 +519,6 @@ def generate_stacked_bar_layout(discrete_label_list, prefix):
                     config=common_config,
                     responsive=True,
                     style={
-                        "min-height": "400px",
                         "flex-grow": "1",
                     }
                 )
