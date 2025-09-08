@@ -8,10 +8,21 @@ import dash_ag_grid as dag
 from guanaco.config import common_config
 
 
-# Load color palettes
+# Discrete color palettes including colorblind-friendly options
 cvd_color_path = Path(__file__).parent / "cvd_color.json"
 with open(cvd_color_path, "r") as f:
     palette_json = json.load(f)
+
+plotly_qualitative_palettes = {}
+for name in dir(px.colors.qualitative):
+    if name.startswith("_"):
+        continue
+    palette = getattr(px.colors.qualitative, name, None)
+    if isinstance(palette, (list, tuple)) and palette and all(isinstance(c, str) for c in palette):
+        plotly_qualitative_palettes[name] = list(palette)
+for k, v in plotly_qualitative_palettes.items():
+    if k not in palette_json.get("color_palettes", {}):
+        palette_json["color_palettes"][k] = v
 palette_names = list(palette_json["color_palettes"].keys())
 
 # Get the available color scales
@@ -77,9 +88,9 @@ def generate_heatmap_layout(adata, prefix):
         dcc.Dropdown(
             id=f'{prefix}-heatmap-secondary-colormap-dropdown',
             options=[{'label': name, 'value': name} for name in palette_names],
-            value='tab20',  # Default to tab20 as you requested
+            value='Pastel',
             placeholder="Select colormap for secondary annotation",
-            clearable=True,
+            clearable=False,
             style={'width': '200px', 'marginBottom': '10px'}
         )
     ])
