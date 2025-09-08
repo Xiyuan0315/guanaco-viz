@@ -93,12 +93,14 @@ def plot_dot_matrix(adata, genes, groupby, selected_labels, aggregation='mean', 
             (30, [0.6, 0.5, 0.4, 0.3]) if max_fraction < 0.6 else
             (25, [0.7, 0.6, 0.5, 0.4]) if max_fraction < 0.7 else
             (20, [0.8, 0.6, 0.3, 0.1]) if max_fraction < 0.8 else
-            (17, [1.0, 0.75, 0.5, 0.25])
+            (17, [1.0, 0.75, 0.50, 0.25])
         )
         scale, size_legend_values = scale_params
+        # Increase scale for better visibility
+        scale *= 1.6
 
-        marker_sizes = df_merged['fraction'] * scale
-        size_legend_sizes = [s * scale for s in size_legend_values]
+        marker_sizes = (df_merged['fraction'] * scale)
+        size_legend_sizes = [(s * scale)  for s in size_legend_values]
         custom_data = np.stack([df_merged['expression'], df_merged['fraction']], axis=-1)
 
         fig = go.Figure()
@@ -113,15 +115,16 @@ def plot_dot_matrix(adata, genes, groupby, selected_labels, aggregation='mean', 
                 colorscale=color_map,
                 cmin=vmin,
                 cmax=vmax,
+                line=dict(color='black', width=0.5),
                 colorbar=dict(
                     title=f'{aggregation.capitalize()} Expression ({transformation})' if transformation and transformation != 'None' else f'{aggregation.capitalize()} Expression',
                     tickfont=dict(color='DarkSlateGrey', size=10),
-                    len=0.5,
-                    yanchor="bottom",
-                    y=0
+                    len=0.6,
+                    yanchor="middle",
+                    y=0.5,
+                    x=0.98
                 )
             ),
-            line=dict(color='black', width=0.5),
             customdata=custom_data,
             hovertemplate=(
                 'Gene: %{x}<br>'
@@ -130,35 +133,43 @@ def plot_dot_matrix(adata, genes, groupby, selected_labels, aggregation='mean', 
                 'Fraction: %{customdata[1]:.4f}<extra></extra>'
             )
         ))
+        # Build a custom size legend as a right-side inset aligned with the colorbar
+        y_positions = np.linspace(0.8, 0.2, len(size_legend_values))
+        fig.update_layout(
+            xaxis=dict(showline=True, linewidth=2, linecolor='black', showgrid=False, domain=[0.0, 0.72]),
+            yaxis=dict(showline=True, linewidth=2, linecolor='black', showgrid=False, categoryorder='array', categoryarray=groups, domain=[0.0, 1.0]),
+            xaxis2=dict(domain=[0.74, 0.96], range=[0, 1], showgrid=False, zeroline=False, showticklabels=False),
+            yaxis2=dict(domain=[0.2, 0.8], range=[0, 1], showgrid=False, zeroline=False, showticklabels=False),
+            margin=dict(r=260),
+            plot_bgcolor='white', paper_bgcolor='white'
+        )
 
-        # Add fraction legend title
+        # Title for size legend
         fig.add_trace(go.Scatter(
-            x=[None], y=[""],
-            mode="text",
-            text=["Fraction of Cells"],
-            textposition="top center",
-            textfont=dict(size=10, color="black"),
-            showlegend=False
+            x=[0.5], y=[0.95], xaxis='x2', yaxis='y2',
+            mode='text', text=["Frac. cells"],
+            textposition='top left',
+            cliponaxis=False,
+            showlegend=False, hoverinfo='skip',
+            textfont=dict(size=11, color='black')
         ))
 
-        # Add size legend
-        for size, value in zip(size_legend_sizes, size_legend_values):
+        # Dots with percent labels to the right
+        for size, value, y in zip(size_legend_sizes, size_legend_values, y_positions):
+            percent = f"{value}"
             fig.add_trace(go.Scatter(
-                x=[None],
-                y=[None],
-                mode="markers",
-                marker=dict(size=size, color="grey", opacity=1),
-                name=f"{'Percent Expressed <br>' if size == size_legend_sizes[0] else ''}{value:.2f}",
-                legendgroup="size_legend",
-                showlegend=True
+                x=[0.25], y=[y], xaxis='x2', yaxis='y2',
+                mode='markers',
+                marker=dict(size=size, color='grey', line=dict(color='black', width=0.5)),
+                showlegend=False, hoverinfo='skip'
             ))
-
-        fig.update_layout(
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            xaxis=dict(showline=True, linewidth=2, linecolor='black', showgrid=False),
-            yaxis=dict(showline=True, linewidth=2, linecolor='black', showgrid=False, categoryorder='array', categoryarray=groups)
-        )
+            fig.add_trace(go.Scatter(
+                x=[0.62], y=[y], xaxis='x2', yaxis='y2',
+                mode='text', text=[percent],
+                textposition='middle left',
+                showlegend=False, hoverinfo='skip',
+                textfont=dict(size=10, color='black')
+            ))
 
     else:  # matrixplot
         fig = go.Figure(data=go.Heatmap(
