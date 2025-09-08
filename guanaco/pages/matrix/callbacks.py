@@ -1750,15 +1750,20 @@ def matrix_callbacks(app, adata, prefix):
          Input(f'{prefix}-single-cell-annotation-dropdown', 'value'),
          Input(f'{prefix}-single-cell-label-selection', 'value'),
          Input(f'{prefix}-plot-type-switch', 'value'),
-        Input(f'{prefix}-dotplot-log-or-zscore', 'value'),
+         Input(f'{prefix}-dotplot-log-or-zscore', 'value'),
          Input(f'{prefix}-dotplot-standardization', 'value'),
          Input(f'{prefix}-dotmatrix-color-map-dropdown', 'value'),
+         Input(f'{prefix}-dotplot-cluster-mode', 'value'),
+         Input(f'{prefix}-dotplot-cluster-method', 'value'),
+         Input(f'{prefix}-dotplot-cluster-metric', 'value'),
          Input(f'{prefix}-selected-cells-store', 'data'),
          Input(f'{prefix}-single-cell-tabs', 'value')],
         [State(f'{prefix}-dotplot', 'figure')]  # Keep current figure
     )
     def update_dotplot(selected_genes, selected_annotation, selected_labels, plot_type,
-                       transformation, standardization, color_map, selected_cells, active_tab, current_figure):
+                       transformation, standardization, color_map,
+                       cluster_mode, cluster_method, cluster_metric,
+                       selected_cells, active_tab, current_figure):
         # Lazy loading: only update if this tab is active
         if active_tab != 'dotplot-tab':
             return current_figure if current_figure else go.Figure()
@@ -1774,7 +1779,10 @@ def matrix_callbacks(app, adata, prefix):
                 transformation=transformation,
                 standardization=standardization,
                 color_map=color_map,
-                plot_type=plot_type
+                plot_type=plot_type,
+                cluster=cluster_mode or 'none',
+                method=cluster_method or 'average',
+                metric=cluster_metric or 'correlation'
             )
         else:
             filtered_adata = filter_data(adata, selected_annotation, selected_labels, selected_cells)
@@ -1787,7 +1795,10 @@ def matrix_callbacks(app, adata, prefix):
                 transformation=transformation,
                 standardization=standardization,
                 color_map=color_map,
-                plot_type=plot_type
+                plot_type=plot_type,
+                cluster=cluster_mode or 'none',
+                method=cluster_method or 'average',
+                metric=cluster_metric or 'correlation'
             )
     
     @app.callback(

@@ -442,6 +442,47 @@ def generate_dotplot_layout(prefix):
         )
     ])
 
+    # --- Clustering controls ---
+    clustering_controls = html.Div([
+        html.Label('Clustering:', style={'fontWeight': 'bold', 'marginBottom': '5px'}),
+        dbc.RadioItems(
+            id=f'{prefix}-dotplot-cluster-mode',
+            options=[
+                {'label': 'None', 'value': 'none'},
+                {'label': 'Rows', 'value': 'row'},
+                {'label': 'Columns', 'value': 'col'},
+                {'label': 'Both', 'value': 'both'},
+            ],
+            value='none',
+            inline=True,
+            style={'marginBottom': '10px'}
+        ),
+        html.Div([
+            html.Div([
+                html.Label('Linkage Method', style={'fontWeight': 'bold'}),
+                dcc.Dropdown(
+                    id=f'{prefix}-dotplot-cluster-method',
+                    options=[
+                        {'label': m.capitalize(), 'value': m} for m in ['average', 'ward', 'complete', 'single']
+                    ],
+                    value='average', clearable=False, style={'minWidth': '160px'}
+                )
+            ], style={'display': 'inline-block', 'marginRight': '10px'}),
+            html.Div([
+                html.Label('Distance Metric', style={'fontWeight': 'bold'}),
+                dcc.Dropdown(
+                    id=f'{prefix}-dotplot-cluster-metric',
+                    options=[
+                        {'label': 'Correlation', 'value': 'correlation'},
+                        {'label': 'Euclidean', 'value': 'euclidean'},
+                        {'label': 'Cosine', 'value': 'cosine'},
+                    ],
+                    value='correlation', clearable=False, style={'minWidth': '160px'}
+                )
+            ], style={'display': 'inline-block'})
+        ])
+    ], style={'marginBottom': '10px'})
+
     draggable_container = dash_draggable.GridLayout(
     id=f'{prefix}-draggable-dotplot',
     className='grid-layout-no-border',
@@ -484,8 +525,9 @@ def generate_dotplot_layout(prefix):
     dotplot_layout = html.Div([
         dotplot_transformation_selection,
         dotplot_standardization_selection,
-        dotmatrix_color_map_dropdown,
+        clustering_controls,
         plot_type_switch,
+        dotmatrix_color_map_dropdown,
         draggable_container
     ], style={'padding': '20px', 'marginBottom': '15px'})
 
